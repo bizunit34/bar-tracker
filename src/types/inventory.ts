@@ -1,10 +1,4 @@
-export type InventoryCategory =
-  | 'spirit'
-  | 'liqueur'
-  | 'mixer'
-  | 'garnish'
-  | 'bitter'
-  | 'other';
+export type InventoryCategory = 'spirit' | 'liqueur' | 'mixer' | 'garnish' | 'bitter' | 'other';
 
 export type InventoryUnit = 'bottle' | 'ml' | 'oz' | 'count';
 

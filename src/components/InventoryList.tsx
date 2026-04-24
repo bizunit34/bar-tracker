@@ -1,15 +1,8 @@
-import React from 'react';
-import {
-  FlatList,
-  ListRenderItemInfo,
-  StyleSheet,
-  Text,
-  View
-} from 'react-native';
+import React, { useCallback } from 'react';
+import { FlatList, ListRenderItemInfo, StyleSheet, Text, View } from 'react-native';
 
 import { colors } from '../theme/colors';
 import { InventoryItem } from '../types/inventory';
-
 import InventoryListItem from './InventoryListItem';
 
 type InventoryListProps = {
@@ -17,18 +10,15 @@ type InventoryListProps = {
 };
 
 function InventoryList({ items }: InventoryListProps): React.JSX.Element {
-  const renderItem = React.useCallback(
-    (info: ListRenderItemInfo<InventoryItem>): React.JSX.Element => {
-      return <InventoryListItem item={info.item} />;
-    },
-    []
-  );
+  const renderItem = useCallback((info: ListRenderItemInfo<InventoryItem>): React.JSX.Element => {
+    return <InventoryListItem item={info.item} />;
+  }, []);
 
-  const keyExtractor = React.useCallback((item: InventoryItem): string => {
+  const keyExtractor = useCallback((item: InventoryItem): string => {
     return item.id;
   }, []);
 
-  const renderEmpty = React.useCallback((): React.JSX.Element => {
+  const renderEmpty = useCallback((): React.JSX.Element => {
     return (
       <View style={styles.emptyState}>
         <Text style={styles.emptyTitle}>Nothing tracked yet</Text>
@@ -56,12 +46,11 @@ function ItemSeparator(): React.JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  listContent: {
-    gap: 12,
-    paddingBottom: 24
-  },
-  separator: {
-    height: 12
+  emptyCopy: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    marginTop: 8,
+    textAlign: 'center',
   },
   emptyState: {
     alignItems: 'center',
@@ -69,19 +58,20 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: 12,
     borderWidth: 1,
-    padding: 24
+    padding: 24,
   },
   emptyTitle: {
     color: colors.textPrimary,
     fontSize: 16,
-    fontWeight: '700'
+    fontWeight: '700',
   },
-  emptyCopy: {
-    color: colors.textSecondary,
-    fontSize: 14,
-    marginTop: 8,
-    textAlign: 'center'
-  }
+  listContent: {
+    gap: 12,
+    paddingBottom: 24,
+  },
+  separator: {
+    height: 12,
+  },
 });
 
 export default InventoryList;

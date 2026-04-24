@@ -16,14 +16,14 @@ function App(): React.JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    backgroundColor: colors.background,
-    flex: 1
-  },
   container: {
     backgroundColor: colors.background,
-    flex: 1
-  }
+    flex: 1,
+  },
+  safeArea: {
+    backgroundColor: colors.background,
+    flex: 1,
+  },
 });
 
 export default App;

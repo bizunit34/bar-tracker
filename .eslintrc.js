@@ -1,11 +1,20 @@
 /* eslint-disable import/no-commonjs */
+const typeCheckedTypeScriptRules = Object.fromEntries(
+  Object.keys(
+    require('@typescript-eslint/eslint-plugin').configs['recommended-requiring-type-checking']
+      .rules,
+  ).map((ruleName) => {
+    return [ruleName, 'off'];
+  }),
+);
+
 module.exports = {
   root: true,
   parser: '@typescript-eslint/parser',
   parserOptions: {
     project: './tsconfig.json',
     sourceType: 'module',
-    ecmaVersion: 'latest'
+    ecmaVersion: 'latest',
   },
   plugins: [
     '@typescript-eslint',
@@ -13,7 +22,7 @@ module.exports = {
     'react-hooks',
     'react-native',
     'import',
-    'simple-import-sort'
+    'simple-import-sort',
   ],
   extends: [
     '@react-native',
@@ -26,18 +35,18 @@ module.exports = {
     'plugin:import/recommended',
     'plugin:import/typescript',
     'plugin:prettier/recommended',
-    'prettier'
+    'prettier',
   ],
   settings: {
     react: { version: 'detect' },
     'import/resolver': {
       typescript: true,
-      node: { extensions: ['.ts', '.tsx', '.js', '.jsx', '.json'] }
-    }
+      node: { extensions: ['.ts', '.tsx', '.js', '.jsx', '.json'] },
+    },
   },
   env: {
     'react-native/react-native': true,
-    es6: true
+    es6: true,
   },
   rules: {
     'import/no-unresolved': 'error',
@@ -55,7 +64,7 @@ module.exports = {
       { blankLine: 'always', prev: '*', next: 'try' },
       { blankLine: 'always', prev: 'try', next: '*' },
       { blankLine: 'always', prev: '*', next: 'while' },
-      { blankLine: 'always', prev: 'while', next: '*' }
+      { blankLine: 'always', prev: 'while', next: '*' },
     ],
     curly: 'error',
     'arrow-body-style': ['error', 'always'],
@@ -69,7 +78,7 @@ module.exports = {
     '@typescript-eslint/explicit-function-return-type': 'error',
     '@typescript-eslint/naming-convention': [
       'error',
-      { selector: 'class', format: ['PascalCase'] }
+      { selector: 'class', format: ['PascalCase'] },
     ],
     '@typescript-eslint/array-type': ['error', { default: 'generic' }],
     '@typescript-eslint/typedef': 'error',
@@ -81,8 +90,8 @@ module.exports = {
         allowKeywords: true,
         allowPrivateClassPropertyAccess: false,
         allowProtectedClassPropertyAccess: false,
-        allowIndexSignaturePropertyAccess: false
-      }
+        allowIndexSignaturePropertyAccess: false,
+      },
     ],
     '@typescript-eslint/no-unused-vars': [
       'error',
@@ -93,24 +102,29 @@ module.exports = {
         caughtErrorsIgnorePattern: '^_',
         destructuredArrayIgnorePattern: '^_',
         varsIgnorePattern: '^_',
-        ignoreRestSiblings: true
-      }
+        ignoreRestSiblings: true,
+      },
     ],
     'react-native/no-raw-text': 'off',
     'react/prop-types': 'off',
-    'react/react-in-jsx-scope': 'off'
+    'react/react-in-jsx-scope': 'off',
   },
   overrides: [
     {
       files: ['*.js'],
-      parserOptions: { project: null }
-    }
+      parserOptions: { project: null },
+      rules: {
+        ...typeCheckedTypeScriptRules,
+        '@typescript-eslint/dot-notation': 'off',
+      },
+    },
   ],
   ignorePatterns: [
     'node_modules/',
     'android/',
     'ios/',
+    '.eslintrc.js',
     'babel.config.js',
-    'metro.config.js'
-  ]
+    'metro.config.js',
+  ],
 };

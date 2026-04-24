@@ -13,15 +13,6 @@
       "*": ["./src/*"]
     }
   },
-  "include": [
-    "src/**/*",
-    "index.js",
-    "babel.config.js",
-    "metro.config.js"
-  ],
-  "exclude": [
-    "node_modules",
-    "android",
-    "ios"
-  ]
+  "include": ["src/**/*", "index.js", "babel.config.js", "metro.config.js"],
+  "exclude": ["node_modules", "android", "ios"]
 }

@@ -8,7 +8,7 @@ export const sampleInventory: Array<InventoryItem> = [
     quantity: 2,
     unit: 'bottle',
     minStock: 1,
-    notes: 'Great for martinis and gin & tonics.'
+    notes: 'Great for martinis and gin & tonics.',
   },
   {
     id: 'rye-whiskey',
@@ -17,7 +17,7 @@ export const sampleInventory: Array<InventoryItem> = [
     quantity: 1,
     unit: 'bottle',
     minStock: 1,
-    notes: 'Base for Manhattans and Old Fashioneds.'
+    notes: 'Base for Manhattans and Old Fashioneds.',
   },
   {
     id: 'vermouth-dry',
@@ -25,7 +25,7 @@ export const sampleInventory: Array<InventoryItem> = [
     category: 'liqueur',
     quantity: 1,
     unit: 'bottle',
-    minStock: 1
+    minStock: 1,
   },
   {
     id: 'vermouth-sweet',
@@ -33,7 +33,7 @@ export const sampleInventory: Array<InventoryItem> = [
     category: 'liqueur',
     quantity: 1,
     unit: 'bottle',
-    minStock: 1
+    minStock: 1,
   },
   {
     id: 'orange-bitters',
@@ -41,7 +41,7 @@ export const sampleInventory: Array<InventoryItem> = [
     category: 'bitter',
     quantity: 60,
     unit: 'ml',
-    minStock: 30
+    minStock: 30,
   },
   {
     id: 'angostura-bitters',
@@ -49,7 +49,7 @@ export const sampleInventory: Array<InventoryItem> = [
     category: 'bitter',
     quantity: 100,
     unit: 'ml',
-    minStock: 60
+    minStock: 60,
   },
   {
     id: 'simple-syrup',
@@ -58,7 +58,7 @@ export const sampleInventory: Array<InventoryItem> = [
     quantity: 300,
     unit: 'ml',
     minStock: 150,
-    notes: 'House-made; keep chilled.'
+    notes: 'House-made; keep chilled.',
   },
   {
     id: 'lime-juice',
@@ -67,7 +67,7 @@ export const sampleInventory: Array<InventoryItem> = [
     quantity: 6,
     unit: 'oz',
     minStock: 8,
-    notes: 'Press fresh daily.'
+    notes: 'Press fresh daily.',
   },
   {
     id: 'lemon-juice',
@@ -75,7 +75,7 @@ export const sampleInventory: Array<InventoryItem> = [
     category: 'mixer',
     quantity: 10,
     unit: 'oz',
-    minStock: 8
+    minStock: 8,
   },
   {
     id: 'maraschino-cherries',
@@ -83,7 +83,7 @@ export const sampleInventory: Array<InventoryItem> = [
     category: 'garnish',
     quantity: 1,
     unit: 'bottle',
-    minStock: 1
+    minStock: 1,
   },
   {
     id: 'olives',
@@ -91,7 +91,7 @@ export const sampleInventory: Array<InventoryItem> = [
     category: 'garnish',
     quantity: 0,
     unit: 'bottle',
-    minStock: 1
+    minStock: 1,
   },
   {
     id: 'large-ice',
@@ -100,6 +100,6 @@ export const sampleInventory: Array<InventoryItem> = [
     quantity: 8,
     unit: 'count',
     minStock: 12,
-    notes: '2x2 cubes.'
-  }
+    notes: '2x2 cubes.',
+  },
 ];

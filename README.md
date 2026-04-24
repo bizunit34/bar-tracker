@@ -3,6 +3,7 @@
 React Native + TypeScript starter for managing a bar inventory (spirits, mixers, garnish, tools).
 
 ## Getting started
+
 - Install prerequisites for React Native (Node 18+, Xcode for iOS, Android SDK/Java for Android, Watchman on macOS).
 - Install dependencies: `npm install`
 - Install iOS native dependencies once after cloning or when native deps change: `cd ios && pod install && cd ..`
@@ -10,15 +11,18 @@ React Native + TypeScript starter for managing a bar inventory (spirits, mixers,
 - Run the app: `npm run ios` or `npm run android` (simulator/emulator must be running).
 
 ## Native projects
+
 - `android/` and `ios/` are included so the standard React Native CLI commands work.
 - Hermes is disabled on both platforms for this project, so local native setup does not require the extra Hermes/CMake toolchain.
 
 ## Tooling
+
 - Lint: `npm run lint` (ESLint with React Native, TypeScript, import sorting, and the provided strict ruleset)
 - Format: `npm run format` (Prettier)
 - TypeScript: `tsconfig.json` extends `@tsconfig/react-native` with strict type-checking.
 
 ## Project structure
+
 - `src/App.tsx`: App entry and navigation wrapper.
 - `src/assets/`: App-bundled static assets such as scene images, item art, and placeholders.
 - `src/screens/InventoryScreen.tsx`: Inventory overview with summary stats.
@@ -28,6 +32,7 @@ React Native + TypeScript starter for managing a bar inventory (spirits, mixers,
 - `src/theme/colors.ts`: Centralized palette.
 
 ## Next steps
+
 - Replace `sampleInventory` with data from storage or an API.
 - Add CRUD flows for items (add, edit, archive) plus quantity adjustments.
 - Hook up authentication or syncing if you plan multi-device use.
