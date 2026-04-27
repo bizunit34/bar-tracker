@@ -16,6 +16,7 @@ import headerLogo from './assets/images/logos/barTrackerLogo-horizontal.png';
 import { bootstrapCatalogDatabase } from './catalog/bootstrap';
 import BarScreen from './screens/BarScreen';
 import InventoryScreen from './screens/InventoryScreen';
+import RecipesScreen from './screens/RecipesScreen';
 import { colors } from './theme/colors';
 
 type RouteName = 'Home' | 'Bar' | 'Recipes' | 'Shopping Cart' | 'Share' | 'Connected Bars';
@@ -161,6 +162,10 @@ function ActiveScreen({ route }: ActiveScreenProps): React.JSX.Element {
 
   if (route === 'Bar') {
     return <BarScreen />;
+  }
+
+  if (route === 'Recipes') {
+    return <RecipesScreen />;
   }
 
   return <SimplePage title={route} />;

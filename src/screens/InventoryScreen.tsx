@@ -1,23 +1,28 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import InventoryList from '../components/InventoryList';
-import { sampleInventory } from '../data/sampleInventory';
+import { useBarInventoryItems } from '../data/barInventoryStore';
 import { colors } from '../theme/colors';
 import { InventoryItem } from '../types/inventory';
 
 function InventoryScreen(): React.JSX.Element {
-  const [items] = useState<Array<InventoryItem>>(sampleInventory);
+  const items = useBarInventoryItems();
+  const visibleItems = useMemo((): Array<InventoryItem> => {
+    return items.filter((item: InventoryItem): boolean => {
+      return !item.isArchived;
+    });
+  }, [items]);
 
   const stats = useMemo(() => {
-    const totalItems = items.length;
-    const lowStockItems = items.filter((item: InventoryItem): boolean => {
+    const totalItems = visibleItems.length;
+    const lowStockItems = visibleItems.filter((item: InventoryItem): boolean => {
       return item.quantity <= item.minStock;
     }).length;
     const stockedItems = totalItems - lowStockItems;
     const categories = Array.from(
       new Set(
-        items.map((item: InventoryItem): string => {
+        visibleItems.map((item: InventoryItem): string => {
           return item.category;
         }),
       ),
@@ -29,11 +34,11 @@ function InventoryScreen(): React.JSX.Element {
       stockedItems,
       categories,
     };
-  }, [items]);
+  }, [visibleItems]);
 
   return (
     <InventoryList
-      items={items}
+      items={visibleItems}
       contentContainerStyle={styles.container}
       ListHeaderComponent={<InventoryHeader stats={stats} />}
     />

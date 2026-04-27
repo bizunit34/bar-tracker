@@ -1,8 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import {
   FlatList,
+  Image,
   ListRenderItemInfo,
+  Modal,
   Pressable,
+  ScrollView,
   StyleProp,
   StyleSheet,
   Text,
@@ -10,10 +13,17 @@ import {
   View,
   ViewStyle,
 } from 'react-native';
+import { Asset, launchCamera, launchImageLibrary } from 'react-native-image-picker';
 
-import { sampleInventory } from '../data/sampleInventory';
+import { catalogInventoryItems } from '../catalog/catalogInventory';
+import {
+  archiveBarInventoryItem,
+  removeBarInventoryItem,
+  saveBarInventoryItem,
+  useBarInventoryItems,
+} from '../data/barInventoryStore';
 import { colors } from '../theme/colors';
-import { InventoryCategory, InventoryItem } from '../types/inventory';
+import { InventoryCategory, InventoryHolding, InventoryItem } from '../types/inventory';
 
 type ViewMode = 'list' | 'display';
 
@@ -24,6 +34,8 @@ type SortOption = 'name' | 'rating' | 'quantity';
 type SortDirection = 'asc' | 'desc';
 
 type OpenDropdown = 'category' | 'sort' | 'stock' | 'type' | null;
+
+type EditorMode = 'add' | 'edit';
 
 type BarFilterState = {
   categories: Array<InventoryCategory>;
@@ -39,6 +51,27 @@ type SortSelection = {
   direction: SortDirection;
   label: string;
   sortBy: SortOption;
+};
+
+type ItemFormState = {
+  abv: string;
+  category: InventoryCategory;
+  catalogItemId: string | null;
+  description: string;
+  holdings: Array<ItemHoldingFormState>;
+  imageUri: string | null;
+  name: string;
+  notes: string;
+  productType: string;
+  rating: string;
+  ratingComments: string;
+  unit: InventoryItem['unit'];
+};
+
+type ItemHoldingFormState = {
+  amount: string;
+  id: string;
+  label: string;
 };
 
 const allCategories: Array<InventoryCategory> = [
@@ -71,28 +104,52 @@ const initialFilters: BarFilterState = {
   viewMode: 'list',
 };
 
+const emptyItemForm: ItemFormState = {
+  abv: '',
+  catalogItemId: null,
+  category: 'spirit',
+  description: '',
+  holdings: [{ amount: '1', id: 'holding-1', label: 'Unopened bottle' }],
+  imageUri: null,
+  name: '',
+  notes: '',
+  productType: '',
+  rating: '',
+  ratingComments: '',
+  unit: 'bottle',
+};
+
 function BarScreen(): React.JSX.Element {
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
   const [filters, setFilters] = useState<BarFilterState>(initialFilters);
+  const inventoryItems = useBarInventoryItems();
+  const [editorMode, setEditorMode] = useState<EditorMode>('add');
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [form, setForm] = useState<ItemFormState>(emptyItemForm);
+  const [isEditorOpen, setIsEditorOpen] = useState<boolean>(false);
 
   const productTypes = useMemo((): Array<string> => {
     return Array.from(
       new Set(
-        sampleInventory.map((item: InventoryItem): string => {
+        inventoryItems.map((item: InventoryItem): string => {
           return item.productType ?? formatFilterLabel(item.category);
         }),
       ),
     ).sort((left: string, right: string): number => {
       return left.localeCompare(right);
     });
-  }, []);
+  }, [inventoryItems]);
 
   const visibleItems = useMemo((): Array<InventoryItem> => {
     const normalizedQuery = filters.query.trim().toLowerCase();
 
-    return sampleInventory
+    return inventoryItems
       .filter((item: InventoryItem): boolean => {
         const productType = item.productType ?? formatFilterLabel(item.category);
+
+        if (item.isArchived) {
+          return false;
+        }
 
         if (filters.categories.length > 0 && !filters.categories.includes(item.category)) {
           return false;
@@ -130,17 +187,63 @@ function BarScreen(): React.JSX.Element {
       .sort((left: InventoryItem, right: InventoryItem): number => {
         return compareInventoryItems(left, right, filters.sortBy, filters.sortDirection);
       });
-  }, [filters]);
+  }, [filters, inventoryItems]);
+
+  const openAddItem = (): void => {
+    setEditorMode('add');
+    setEditingItemId(null);
+    setForm(emptyItemForm);
+    setIsEditorOpen(true);
+  };
+
+  const openEditItem = (item: InventoryItem): void => {
+    setEditorMode('edit');
+    setEditingItemId(item.id);
+    setForm(createFormFromItem(item));
+    setIsEditorOpen(true);
+  };
+
+  const closeEditor = (): void => {
+    setIsEditorOpen(false);
+  };
+
+  const saveItem = (): void => {
+    const nextItem = createItemFromForm(
+      form,
+      editingItemId ?? form.catalogItemId ?? createInventoryItemId(form.name),
+    );
+
+    if (!nextItem) {
+      return;
+    }
+
+    saveBarInventoryItem(nextItem);
+    setExpandedItemId(nextItem.id);
+    setIsEditorOpen(false);
+  };
+
+  const removeItem = (itemId: string): void => {
+    removeBarInventoryItem(itemId);
+    setExpandedItemId(null);
+  };
+
+  const archiveItem = (itemId: string): void => {
+    archiveBarInventoryItem(itemId);
+    setExpandedItemId(null);
+  };
 
   const renderItem = ({ item }: ListRenderItemInfo<InventoryItem>): React.JSX.Element => {
     if (filters.viewMode === 'display') {
-      return <BarDisplayCard item={item} />;
+      return <BarDisplayCard item={item} onEdit={openEditItem} />;
     }
 
     return (
       <BarAccordionRow
+        onArchive={archiveItem}
+        onEdit={openEditItem}
         isExpanded={item.id === expandedItemId}
         item={item}
+        onRemove={removeItem}
         onPress={(): void => {
           setExpandedItemId((currentItemId: string | null): string | null => {
             return currentItemId === item.id ? null : item.id;
@@ -164,6 +267,7 @@ function BarScreen(): React.JSX.Element {
       ListHeaderComponent={
         <BarControls
           filters={filters}
+          onAddItem={openAddItem}
           productTypes={productTypes}
           resultCount={visibleItems.length}
           onFiltersChange={(nextFilters: BarFilterState): void => {
@@ -174,12 +278,24 @@ function BarScreen(): React.JSX.Element {
       }
       numColumns={filters.viewMode === 'display' ? 2 : 1}
       renderItem={renderItem}
+      ListFooterComponent={
+        <ItemEditorModal
+          catalogItems={catalogInventoryItems}
+          form={form}
+          mode={editorMode}
+          visible={isEditorOpen}
+          onChange={setForm}
+          onClose={closeEditor}
+          onSave={saveItem}
+        />
+      }
     />
   );
 }
 
 type BarControlsProps = {
   filters: BarFilterState;
+  onAddItem: () => void;
   onFiltersChange: (filters: BarFilterState) => void;
   productTypes: Array<string>;
   resultCount: number;
@@ -187,6 +303,7 @@ type BarControlsProps = {
 
 function BarControls({
   filters,
+  onAddItem,
   onFiltersChange,
   productTypes,
   resultCount,
@@ -238,6 +355,15 @@ function BarControls({
           <Text style={styles.pageSubtitle}>{resultCount} stocked items</Text>
         </View>
         <View style={styles.controlRow}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={onAddItem}
+            style={({ pressed }): StyleProp<ViewStyle> => {
+              return [styles.addButton, pressed ? styles.controlPressed : null];
+            }}
+          >
+            <Text style={styles.addButtonText}>Add</Text>
+          </Pressable>
           <Pressable
             accessibilityRole="button"
             onPress={toggleFilterMenu}
@@ -557,10 +683,20 @@ function SegmentButton({ isActive, label, onPress }: ButtonProps): React.JSX.Ele
 type BarAccordionRowProps = {
   isExpanded: boolean;
   item: InventoryItem;
+  onArchive: (itemId: string) => void;
+  onEdit: (item: InventoryItem) => void;
   onPress: () => void;
+  onRemove: (itemId: string) => void;
 };
 
-function BarAccordionRow({ isExpanded, item, onPress }: BarAccordionRowProps): React.JSX.Element {
+function BarAccordionRow({
+  isExpanded,
+  item,
+  onArchive,
+  onEdit,
+  onPress,
+  onRemove,
+}: BarAccordionRowProps): React.JSX.Element {
   return (
     <View style={styles.accordionCard}>
       <Pressable
@@ -581,7 +717,9 @@ function BarAccordionRow({ isExpanded, item, onPress }: BarAccordionRowProps): R
         <Text style={styles.ratingText}>{formatRating(item.rating)}</Text>
       </Pressable>
 
-      {isExpanded ? <ProductDetails item={item} /> : null}
+      {isExpanded ? (
+        <ProductDetails item={item} onArchive={onArchive} onEdit={onEdit} onRemove={onRemove} />
+      ) : null}
     </View>
   );
 }
@@ -590,7 +728,13 @@ type ProductCardProps = {
   item: InventoryItem;
 };
 
-function BarDisplayCard({ item }: ProductCardProps): React.JSX.Element {
+type ProductActionsProps = ProductCardProps & {
+  onArchive?: (itemId: string) => void;
+  onEdit: (item: InventoryItem) => void;
+  onRemove?: (itemId: string) => void;
+};
+
+function BarDisplayCard({ item, onEdit }: ProductActionsProps): React.JSX.Element {
   return (
     <View style={styles.displayCard}>
       <View style={styles.displayStatusRow}>
@@ -602,21 +746,80 @@ function BarDisplayCard({ item }: ProductCardProps): React.JSX.Element {
       <Text style={styles.displayQuantity}>
         {item.quantity} {item.unit}
       </Text>
+      <Pressable
+        accessibilityRole="button"
+        onPress={(): void => {
+          onEdit(item);
+        }}
+        style={({ pressed }): StyleProp<ViewStyle> => {
+          return [styles.secondaryButton, pressed ? styles.controlPressed : null];
+        }}
+      >
+        <Text style={styles.secondaryButtonText}>Edit</Text>
+      </Pressable>
     </View>
   );
 }
 
-function ProductDetails({ item }: ProductCardProps): React.JSX.Element {
+function ProductDetails({
+  item,
+  onArchive,
+  onEdit,
+  onRemove,
+}: ProductActionsProps): React.JSX.Element {
   return (
     <View style={styles.details}>
       <DetailLine label="Stock" value={`${item.quantity} ${item.unit} available`} />
-      <DetailLine label="Minimum" value={`${item.minStock} ${item.unit}`} />
+      {item.holdings?.map((holding: InventoryHolding): React.JSX.Element => {
+        return (
+          <DetailLine
+            key={holding.id}
+            label={holding.label}
+            value={`${holding.amount} ${item.unit}`}
+          />
+        );
+      })}
       {item.abv !== undefined ? <DetailLine label="ABV" value={`${item.abv}%`} /> : null}
       {item.description ? <DetailBlock label="Description" value={item.description} /> : null}
       {item.ratingComments ? (
         <DetailBlock label="Rating notes" value={item.ratingComments} />
       ) : null}
       {item.notes ? <DetailBlock label="Bar notes" value={item.notes} /> : null}
+      <View style={styles.itemActionRow}>
+        <Pressable
+          accessibilityRole="button"
+          onPress={(): void => {
+            onEdit(item);
+          }}
+          style={({ pressed }): StyleProp<ViewStyle> => {
+            return [styles.secondaryButton, pressed ? styles.controlPressed : null];
+          }}
+        >
+          <Text style={styles.secondaryButtonText}>Edit</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          onPress={(): void => {
+            onArchive?.(item.id);
+          }}
+          style={({ pressed }): StyleProp<ViewStyle> => {
+            return [styles.secondaryButton, pressed ? styles.controlPressed : null];
+          }}
+        >
+          <Text style={styles.secondaryButtonText}>Archive</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          onPress={(): void => {
+            onRemove?.(item.id);
+          }}
+          style={({ pressed }): StyleProp<ViewStyle> => {
+            return [styles.dangerButton, pressed ? styles.controlPressed : null];
+          }}
+        >
+          <Text style={styles.dangerButtonText}>Remove</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -654,13 +857,581 @@ function StatusIcon({ item }: ProductCardProps): React.JSX.Element {
   );
 }
 
+type ItemEditorModalProps = {
+  catalogItems: Array<InventoryItem>;
+  form: ItemFormState;
+  mode: EditorMode;
+  onChange: (form: ItemFormState) => void;
+  onClose: () => void;
+  onSave: () => void;
+  visible: boolean;
+};
+
+function ItemEditorModal({
+  catalogItems,
+  form,
+  mode,
+  onChange,
+  onClose,
+  onSave,
+  visible,
+}: ItemEditorModalProps): React.JSX.Element {
+  const [isAutocompleteOpen, setIsAutocompleteOpen] = useState<boolean>(false);
+  const suggestions = useMemo((): Array<InventoryItem> => {
+    const query = form.name.trim().toLowerCase();
+
+    if (query.length < 2) {
+      return [];
+    }
+
+    return catalogItems
+      .filter((item: InventoryItem): boolean => {
+        return item.name.toLowerCase().includes(query);
+      })
+      .slice(0, 6);
+  }, [catalogItems, form.name]);
+
+  const updateForm = (partialForm: Partial<ItemFormState>): void => {
+    onChange({ ...form, ...partialForm });
+  };
+  const isCatalogSelected = form.catalogItemId !== null;
+
+  const selectCatalogItem = (item: InventoryItem): void => {
+    onChange({
+      ...createFormFromItem(item),
+      catalogItemId: item.id,
+      holdings: form.holdings,
+      imageUri: form.imageUri,
+      notes: form.notes,
+    });
+    setIsAutocompleteOpen(false);
+  };
+
+  const updateHolding = (
+    holdingId: string,
+    partialHolding: Partial<ItemHoldingFormState>,
+  ): void => {
+    updateForm({
+      holdings: form.holdings.map((holding: ItemHoldingFormState): ItemHoldingFormState => {
+        return holding.id === holdingId ? { ...holding, ...partialHolding } : holding;
+      }),
+    });
+  };
+
+  const addHolding = (): void => {
+    updateForm({
+      holdings: [
+        ...form.holdings,
+        {
+          amount: '1',
+          id: `holding-${Date.now()}`,
+          label: 'Unopened bottle',
+        },
+      ],
+    });
+  };
+
+  const removeHolding = (holdingId: string): void => {
+    updateForm({
+      holdings:
+        form.holdings.length > 1
+          ? form.holdings.filter((holding: ItemHoldingFormState): boolean => {
+              return holding.id !== holdingId;
+            })
+          : form.holdings,
+    });
+  };
+
+  const pickImage = async (source: 'camera' | 'gallery'): Promise<void> => {
+    const result =
+      source === 'camera'
+        ? await launchCamera({ mediaType: 'photo', quality: 0.8 })
+        : await launchImageLibrary({ mediaType: 'photo', quality: 0.8, selectionLimit: 1 });
+    const asset: Asset | undefined = result.assets?.[0];
+
+    if (asset?.uri) {
+      updateForm({ imageUri: asset.uri });
+    }
+  };
+
+  return (
+    <Modal animationType="slide" onRequestClose={onClose} transparent visible={visible}>
+      <View style={styles.editorBackdrop}>
+        <View style={styles.editorPanel}>
+          <View style={styles.editorHeader}>
+            <Text style={styles.editorTitle}>
+              {mode === 'add' ? 'Add bar item' : 'Edit bar item'}
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={onClose}
+              style={({ pressed }): StyleProp<ViewStyle> => {
+                return [styles.iconButton, pressed ? styles.controlPressed : null];
+              }}
+            >
+              <Text style={styles.iconButtonText}>x</Text>
+            </Pressable>
+          </View>
+
+          <ScrollView keyboardShouldPersistTaps="handled" style={styles.editorScroll}>
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Item</Text>
+              <TextInput
+                onChangeText={(name: string): void => {
+                  updateForm({ name });
+                  setIsAutocompleteOpen(true);
+                }}
+                onFocus={(): void => {
+                  setIsAutocompleteOpen(true);
+                }}
+                placeholder="Search or add item name"
+                placeholderTextColor={colors.textSecondary}
+                style={styles.editorInput}
+                value={form.name}
+              />
+              {isAutocompleteOpen && suggestions.length > 0 ? (
+                <View style={styles.autocompletePanel}>
+                  {suggestions.map((item: InventoryItem): React.JSX.Element => {
+                    return (
+                      <Pressable
+                        accessibilityRole="button"
+                        key={item.id}
+                        onPress={(): void => {
+                          selectCatalogItem(item);
+                        }}
+                        style={({ pressed }): StyleProp<ViewStyle> => {
+                          return [
+                            styles.autocompleteOption,
+                            pressed ? styles.controlPressed : null,
+                          ];
+                        }}
+                      >
+                        <Text style={styles.autocompleteTitle}>{item.name}</Text>
+                        <Text style={styles.autocompleteSubtitle}>
+                          {item.productType ?? formatFilterLabel(item.category)}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ) : null}
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Category</Text>
+              <View style={styles.optionRow}>
+                {allCategories.map((category: InventoryCategory): React.JSX.Element => {
+                  return (
+                    <FormOption
+                      isDisabled={isCatalogSelected}
+                      key={category}
+                      isSelected={form.category === category}
+                      label={formatFilterLabel(category)}
+                      onPress={(): void => {
+                        updateForm({ category });
+                      }}
+                    />
+                  );
+                })}
+              </View>
+            </View>
+
+            <View style={styles.formRow}>
+              <View style={styles.formColumn}>
+                <Text style={styles.formLabel}>Type</Text>
+                <TextInput
+                  editable={!isCatalogSelected}
+                  onChangeText={(productType: string): void => {
+                    updateForm({ productType });
+                  }}
+                  placeholder="Whiskey"
+                  placeholderTextColor={colors.textSecondary}
+                  style={[
+                    styles.editorInput,
+                    isCatalogSelected ? styles.editorInputDisabled : null,
+                  ]}
+                  value={form.productType}
+                />
+              </View>
+              <View style={styles.formColumn}>
+                <Text style={styles.formLabel}>ABV</Text>
+                <TextInput
+                  editable={!isCatalogSelected}
+                  keyboardType="numeric"
+                  onChangeText={(abv: string): void => {
+                    updateForm({ abv });
+                  }}
+                  placeholder="40"
+                  placeholderTextColor={colors.textSecondary}
+                  style={[
+                    styles.editorInput,
+                    isCatalogSelected ? styles.editorInputDisabled : null,
+                  ]}
+                  value={form.abv}
+                />
+              </View>
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Unit</Text>
+              <View style={styles.optionRow}>
+                {(['bottle', 'ml', 'oz', 'count'] as const).map(
+                  (unit: InventoryItem['unit']): React.JSX.Element => {
+                    return (
+                      <FormOption
+                        key={unit}
+                        isSelected={form.unit === unit}
+                        label={unit}
+                        onPress={(): void => {
+                          updateForm({ unit });
+                        }}
+                      />
+                    );
+                  },
+                )}
+              </View>
+            </View>
+
+            <View style={styles.formGroup}>
+              <View style={styles.formSectionHeader}>
+                <Text style={styles.formLabel}>Quantity</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={addHolding}
+                  style={({ pressed }): StyleProp<ViewStyle> => {
+                    return [styles.secondaryButton, pressed ? styles.controlPressed : null];
+                  }}
+                >
+                  <Text style={styles.secondaryButtonText}>Add</Text>
+                </Pressable>
+              </View>
+              {form.holdings.map((holding: ItemHoldingFormState): React.JSX.Element => {
+                return (
+                  <View key={holding.id} style={styles.holdingRow}>
+                    <View style={styles.holdingLabelColumn}>
+                      <TextInput
+                        onChangeText={(label: string): void => {
+                          updateHolding(holding.id, { label });
+                        }}
+                        placeholder="Bottle condition"
+                        placeholderTextColor={colors.textSecondary}
+                        style={styles.editorInput}
+                        value={holding.label}
+                      />
+                    </View>
+                    <View style={styles.holdingAmountColumn}>
+                      <TextInput
+                        keyboardType="numeric"
+                        onChangeText={(amount: string): void => {
+                          updateHolding(holding.id, { amount });
+                        }}
+                        placeholder="0"
+                        placeholderTextColor={colors.textSecondary}
+                        style={styles.editorInput}
+                        value={holding.amount}
+                      />
+                    </View>
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={(): void => {
+                        removeHolding(holding.id);
+                      }}
+                      style={({ pressed }): StyleProp<ViewStyle> => {
+                        return [styles.iconButton, pressed ? styles.controlPressed : null];
+                      }}
+                    >
+                      <Text style={styles.iconButtonText}>-</Text>
+                    </Pressable>
+                  </View>
+                );
+              })}
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Photo</Text>
+              {form.imageUri ? (
+                <Image
+                  accessibilityIgnoresInvertColors
+                  source={{ uri: form.imageUri }}
+                  style={styles.photoPreview}
+                />
+              ) : null}
+              <View style={styles.formActionRow}>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={(): void => {
+                    pickImage('camera').catch((error: unknown): void => {
+                      console.error('Failed to take item photo.', error);
+                    });
+                  }}
+                  style={({ pressed }): StyleProp<ViewStyle> => {
+                    return [styles.secondaryButton, pressed ? styles.controlPressed : null];
+                  }}
+                >
+                  <Text style={styles.secondaryButtonText}>Take Photo</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={(): void => {
+                    pickImage('gallery').catch((error: unknown): void => {
+                      console.error('Failed to select item photo.', error);
+                    });
+                  }}
+                  style={({ pressed }): StyleProp<ViewStyle> => {
+                    return [styles.secondaryButton, pressed ? styles.controlPressed : null];
+                  }}
+                >
+                  <Text style={styles.secondaryButtonText}>Choose Photo</Text>
+                </Pressable>
+              </View>
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Your rating</Text>
+              <TextInput
+                keyboardType="numeric"
+                onChangeText={(rating: string): void => {
+                  updateForm({ rating });
+                }}
+                placeholder="0-5"
+                placeholderTextColor={colors.textSecondary}
+                style={styles.editorInput}
+                value={form.rating}
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Review</Text>
+              <TextInput
+                multiline
+                onChangeText={(ratingComments: string): void => {
+                  updateForm({ ratingComments });
+                }}
+                placeholder="Add tasting notes or a review"
+                placeholderTextColor={colors.textSecondary}
+                style={[styles.editorInput, styles.editorTextArea]}
+                value={form.ratingComments}
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Description</Text>
+              <TextInput
+                multiline
+                onChangeText={(description: string): void => {
+                  updateForm({ description });
+                }}
+                placeholder="Add your own description"
+                placeholderTextColor={colors.textSecondary}
+                style={[styles.editorInput, styles.editorTextArea]}
+                value={form.description}
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Private notes</Text>
+              <TextInput
+                multiline
+                onChangeText={(notes: string): void => {
+                  updateForm({ notes });
+                }}
+                placeholder="Shelf location, substitutions, reminders"
+                placeholderTextColor={colors.textSecondary}
+                style={[styles.editorInput, styles.editorTextArea]}
+                value={form.notes}
+              />
+            </View>
+          </ScrollView>
+
+          <View style={styles.editorFooter}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={onClose}
+              style={({ pressed }): StyleProp<ViewStyle> => {
+                return [styles.secondaryButton, pressed ? styles.controlPressed : null];
+              }}
+            >
+              <Text style={styles.secondaryButtonText}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              onPress={onSave}
+              style={({ pressed }): StyleProp<ViewStyle> => {
+                return [styles.applyButton, pressed ? styles.controlPressed : null];
+              }}
+            >
+              <Text style={styles.applyButtonText}>Save</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+type FormOptionProps = {
+  isDisabled?: boolean;
+  isSelected: boolean;
+  label: string;
+  onPress: () => void;
+};
+
+function FormOption({
+  isDisabled = false,
+  isSelected,
+  label,
+  onPress,
+}: FormOptionProps): React.JSX.Element {
+  return (
+    <Pressable
+      disabled={isDisabled}
+      accessibilityRole="button"
+      accessibilityState={{ selected: isSelected }}
+      onPress={onPress}
+      style={({ pressed }): StyleProp<ViewStyle> => {
+        return [
+          styles.formOption,
+          isSelected ? styles.formOptionSelected : null,
+          isDisabled ? styles.formOptionDisabled : null,
+          pressed ? styles.controlPressed : null,
+        ];
+      }}
+    >
+      <Text
+        style={[
+          styles.formOptionText,
+          isSelected ? styles.formOptionTextSelected : null,
+          isDisabled ? styles.formOptionTextDisabled : null,
+        ]}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
 function EmptyState(): React.JSX.Element {
   return (
     <View style={styles.emptyState}>
-      <Text style={styles.emptyTitle}>No matching bar items</Text>
-      <Text style={styles.emptyCopy}>Adjust the filters or search to see more inventory.</Text>
+      <Text style={styles.emptyTitle}>No bar items yet</Text>
+      <Text style={styles.emptyCopy}>Add an item from the catalog or create a custom item.</Text>
     </View>
   );
+}
+
+function createFormFromItem(item: InventoryItem): ItemFormState {
+  return {
+    abv: item.abv?.toString() ?? '',
+    catalogItemId: null,
+    category: item.category,
+    description: item.description ?? '',
+    holdings: createHoldingFormFromItem(item),
+    imageUri: item.imageUri ?? null,
+    name: item.name,
+    notes: item.notes ?? '',
+    productType: item.productType ?? '',
+    rating: item.rating?.toString() ?? '',
+    ratingComments: item.ratingComments ?? '',
+    unit: item.unit,
+  };
+}
+
+function createItemFromForm(form: ItemFormState, id: string): InventoryItem | null {
+  const name = form.name.trim();
+
+  if (!name) {
+    return null;
+  }
+
+  return {
+    abv: parseOptionalNumber(form.abv),
+    category: form.category,
+    description: parseOptionalText(form.description),
+    holdings: createInventoryHoldings(form.holdings),
+    id,
+    imageUri: form.imageUri ?? undefined,
+    minStock: 0,
+    name,
+    notes: parseOptionalText(form.notes),
+    productType: parseOptionalText(form.productType),
+    quantity: calculateHoldingQuantity(form.holdings),
+    rating: clampRating(parseOptionalNumber(form.rating)),
+    ratingComments: parseOptionalText(form.ratingComments),
+    unit: form.unit,
+  };
+}
+
+function createHoldingFormFromItem(item: InventoryItem): Array<ItemHoldingFormState> {
+  if (item.holdings && item.holdings.length > 0) {
+    return item.holdings.map((holding: InventoryHolding): ItemHoldingFormState => {
+      return {
+        amount: holding.amount.toString(),
+        id: holding.id,
+        label: holding.label,
+      };
+    });
+  }
+
+  return [
+    {
+      amount: item.quantity.toString(),
+      id: 'holding-1',
+      label: item.quantity >= 1 ? 'Unopened bottle' : 'Partial bottle',
+    },
+  ];
+}
+
+function createInventoryHoldings(holdings: Array<ItemHoldingFormState>): Array<InventoryHolding> {
+  return holdings.map((holding: ItemHoldingFormState): InventoryHolding => {
+    return {
+      amount: parseNumberOrFallback(holding.amount, 0),
+      id: holding.id,
+      label: parseOptionalText(holding.label) ?? 'Bottle',
+    };
+  });
+}
+
+function calculateHoldingQuantity(holdings: Array<ItemHoldingFormState>): number {
+  return createInventoryHoldings(holdings).reduce(
+    (total: number, holding: InventoryHolding): number => {
+      return total + holding.amount;
+    },
+    0,
+  );
+}
+
+function createInventoryItemId(name: string): string {
+  const normalizedName = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  return `custom-${normalizedName || 'item'}-${Date.now()}`;
+}
+
+function parseOptionalText(value: string): string | undefined {
+  const trimmed = value.trim();
+
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function parseOptionalNumber(value: string): number | undefined {
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseNumberOrFallback(value: string, fallback: number): number {
+  return parseOptionalNumber(value) ?? fallback;
+}
+
+function clampRating(value: number | undefined): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  return Math.min(5, Math.max(0, value));
 }
 
 function getStockStatus(item: InventoryItem): StockStatus {
@@ -769,6 +1540,17 @@ const styles = StyleSheet.create({
     gap: 10,
     padding: 14,
   },
+  addButton: {
+    backgroundColor: colors.accentMuted,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  addButtonText: {
+    color: colors.textPrimary,
+    fontSize: 13,
+    fontWeight: '900',
+  },
   applyButton: {
     alignItems: 'center',
     backgroundColor: colors.accentMuted,
@@ -781,6 +1563,29 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: 14,
     fontWeight: '900',
+  },
+  autocompleteOption: {
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  autocompletePanel: {
+    backgroundColor: colors.card,
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginTop: 6,
+    padding: 4,
+  },
+  autocompleteSubtitle: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  autocompleteTitle: {
+    color: colors.textPrimary,
+    fontSize: 14,
+    fontWeight: '800',
   },
   checkbox: {
     alignItems: 'center',
@@ -816,6 +1621,18 @@ const styles = StyleSheet.create({
   controls: {
     gap: 12,
     marginBottom: 16,
+  },
+  dangerButton: {
+    alignItems: 'center',
+    backgroundColor: colors.danger,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  dangerButtonText: {
+    color: colors.background,
+    fontSize: 13,
+    fontWeight: '900',
   },
   detailBlock: {
     marginTop: 12,
@@ -935,6 +1752,59 @@ const styles = StyleSheet.create({
   dropdownText: {
     flex: 1,
   },
+  editorBackdrop: {
+    backgroundColor: colors.overlay,
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  editorFooter: {
+    borderTopColor: colors.border,
+    borderTopWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    justifyContent: 'flex-end',
+    padding: 14,
+  },
+  editorHeader: {
+    alignItems: 'center',
+    borderBottomColor: colors.border,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  editorInput: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    color: colors.textPrimary,
+    fontSize: 15,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  editorInputDisabled: {
+    opacity: 0.62,
+  },
+  editorPanel: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: 8,
+    borderTopRightRadius: 8,
+    maxHeight: '92%',
+  },
+  editorScroll: {
+    padding: 16,
+  },
+  editorTextArea: {
+    minHeight: 82,
+    textAlignVertical: 'top',
+  },
+  editorTitle: {
+    color: colors.textPrimary,
+    fontSize: 18,
+    fontWeight: '900',
+  },
   emptyCopy: {
     color: colors.textSecondary,
     fontSize: 14,
@@ -992,6 +1862,90 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
   },
+  formActionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  formColumn: {
+    flex: 1,
+    gap: 6,
+  },
+  formGroup: {
+    gap: 6,
+    marginBottom: 14,
+  },
+  formLabel: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  formOption: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  formOptionDisabled: {
+    opacity: 0.55,
+  },
+  formOptionSelected: {
+    backgroundColor: colors.accentMuted,
+    borderColor: colors.accentMuted,
+  },
+  formOptionText: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  formOptionTextDisabled: {
+    color: colors.textSecondary,
+  },
+  formOptionTextSelected: {
+    color: colors.textPrimary,
+  },
+  formRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 14,
+  },
+  formSectionHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  holdingAmountColumn: {
+    width: 82,
+  },
+  holdingLabelColumn: {
+    flex: 1,
+  },
+  holdingRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  iconButton: {
+    alignItems: 'center',
+    borderRadius: 8,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+  iconButtonText: {
+    color: colors.textPrimary,
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  itemActionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 14,
+  },
   itemName: {
     color: colors.textPrimary,
     fontSize: 16,
@@ -1001,6 +1955,11 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontSize: 13,
     marginTop: 3,
+  },
+  optionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
   },
   pageHeader: {
     alignItems: 'center',
@@ -1016,6 +1975,12 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: 28,
     fontWeight: '800',
+  },
+  photoPreview: {
+    backgroundColor: colors.surface,
+    borderRadius: 8,
+    height: 120,
+    width: 120,
   },
   radioMark: {
     borderColor: colors.border,
@@ -1046,6 +2011,20 @@ const styles = StyleSheet.create({
     fontSize: 15,
     paddingHorizontal: 14,
     paddingVertical: 12,
+  },
+  secondaryButton: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  secondaryButtonText: {
+    color: colors.textPrimary,
+    fontSize: 13,
+    fontWeight: '900',
   },
   segmentButton: {
     borderRadius: 7,

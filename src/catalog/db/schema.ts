@@ -48,6 +48,31 @@ export const catalogSchemaStatements: Array<string> = [
     UNIQUE(catalog_item_id, name),
     FOREIGN KEY (catalog_item_id) REFERENCES catalog_items(id) ON DELETE CASCADE
   )`,
+  `CREATE TABLE IF NOT EXISTS recipes (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    source TEXT NOT NULL,
+    description TEXT,
+    ingredients_json TEXT NOT NULL,
+    steps_json TEXT NOT NULL,
+    tools_json TEXT NOT NULL,
+    glassware TEXT,
+    garnish TEXT,
+    tags_json TEXT NOT NULL,
+    is_favorite INTEGER NOT NULL DEFAULT 0,
+    rating REAL,
+    visibility TEXT NOT NULL DEFAULT 'private',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_recipes_is_favorite
+    ON recipes(is_favorite)`,
+  `CREATE TABLE IF NOT EXISTS bar_tools (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    available INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL
+  )`,
   `CREATE INDEX IF NOT EXISTS idx_catalog_items_normalized_name
     ON catalog_items(normalized_name)`,
   `CREATE INDEX IF NOT EXISTS idx_catalog_items_category
