@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import InventoryList from '../components/InventoryList';
 import { sampleInventory } from '../data/sampleInventory';
@@ -32,7 +32,28 @@ function InventoryScreen(): React.JSX.Element {
   }, [items]);
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <InventoryList
+      items={items}
+      contentContainerStyle={styles.container}
+      ListHeaderComponent={<InventoryHeader stats={stats} />}
+    />
+  );
+}
+
+type InventoryStats = {
+  categories: number;
+  lowStockItems: number;
+  stockedItems: number;
+  totalItems: number;
+};
+
+type InventoryHeaderProps = {
+  stats: InventoryStats;
+};
+
+function InventoryHeader({ stats }: InventoryHeaderProps): React.JSX.Element {
+  return (
+    <>
       <View style={styles.header}>
         <Text style={styles.title}>Bar Tracker</Text>
         <Text style={styles.subtitle}>Keep every spirit, mixer, and garnish in check.</Text>
@@ -46,8 +67,7 @@ function InventoryScreen(): React.JSX.Element {
       </View>
 
       <Text style={styles.sectionTitle}>Inventory</Text>
-      <InventoryList items={items} />
-    </ScrollView>
+    </>
   );
 }
 

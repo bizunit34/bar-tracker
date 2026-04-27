@@ -1,15 +1,29 @@
 import React, { useCallback } from 'react';
-import { FlatList, ListRenderItemInfo, StyleSheet, Text, View } from 'react-native';
+import {
+  FlatList,
+  ListRenderItemInfo,
+  StyleProp,
+  StyleSheet,
+  Text,
+  View,
+  ViewStyle,
+} from 'react-native';
 
 import { colors } from '../theme/colors';
 import { InventoryItem } from '../types/inventory';
 import InventoryListItem from './InventoryListItem';
 
 type InventoryListProps = {
+  contentContainerStyle?: StyleProp<ViewStyle>;
   items: Array<InventoryItem>;
+  ListHeaderComponent?: React.ReactElement;
 };
 
-function InventoryList({ items }: InventoryListProps): React.JSX.Element {
+function InventoryList({
+  contentContainerStyle,
+  items,
+  ListHeaderComponent,
+}: InventoryListProps): React.JSX.Element {
   const renderItem = useCallback((info: ListRenderItemInfo<InventoryItem>): React.JSX.Element => {
     return <InventoryListItem item={info.item} />;
   }, []);
@@ -34,9 +48,10 @@ function InventoryList({ items }: InventoryListProps): React.JSX.Element {
       data={items}
       renderItem={renderItem}
       keyExtractor={keyExtractor}
-      contentContainerStyle={styles.listContent}
+      contentContainerStyle={[styles.listContent, contentContainerStyle]}
       ItemSeparatorComponent={ItemSeparator}
       ListEmptyComponent={renderEmpty}
+      ListHeaderComponent={ListHeaderComponent}
     />
   );
 }
