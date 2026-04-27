@@ -9,7 +9,7 @@ function mapCatalogCategory(record: CatalogImportRecord): InventoryCategory {
     .toLowerCase();
 
   if (searchableCategory.includes('bitter')) {
-    return 'bitter';
+    return 'bitters';
   }
 
   if (
@@ -70,9 +70,16 @@ export const catalogInventoryItems: Array<InventoryItem> = (
 
   return {
     abv: record.abv ?? undefined,
+    brand: record.brand ?? null,
     category,
     description: buildCatalogDescription(record),
     id: record.externalKey ?? record.normalizedName ?? record.name,
+    proof: record.proof ?? null,
+    size:
+      record.bottleSizeMl !== null && record.bottleSizeMl !== undefined
+        ? `${record.bottleSizeMl} ml`
+        : null,
+    subcategory: record.subcategory,
     minStock: 0,
     name: record.name,
     notes: record.liquorCode ? `Liquor code ${record.liquorCode}` : undefined,

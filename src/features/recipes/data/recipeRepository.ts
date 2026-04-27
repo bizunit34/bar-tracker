@@ -1,19 +1,19 @@
-import { QueryResultRow } from 'react-native-nitro-sqlite';
+import { SQLiteItem, SQLiteValue } from 'react-native-nitro-sqlite';
 
 import { initializeCatalogDatabase } from '../../../catalog/db/client';
 import { FavoriteRecipeSummary } from '../ai/recipeAiTypes';
 import { Recipe, RecipeIngredient, RecipeSource, RecipeVisibility } from '../types';
 
-type RecipeRow = QueryResultRow & {
+type RecipeRow = SQLiteItem & {
   created_at?: string;
-  description?: string | null;
-  garnish?: string | null;
-  glassware?: string | null;
+  description?: string;
+  garnish?: string;
+  glassware?: string;
   id?: string;
   ingredients_json?: string;
   is_favorite?: number;
   name?: string;
-  rating?: number | null;
+  rating?: number;
   source?: string;
   steps_json?: string;
   tags_json?: string;
@@ -80,20 +80,24 @@ function mapRowToRecipe(row: RecipeRow): Recipe | null {
   };
 }
 
-function recipeToParams(recipe: Recipe): Array<string | number | null> {
+function sqlValue<T extends SQLiteValue | null>(value: T): Exclude<T, null> | undefined {
+  return value === null ? undefined : (value as Exclude<T, null>);
+}
+
+function recipeToParams(recipe: Recipe): Array<SQLiteValue> {
   return [
     recipe.id,
     recipe.name,
     recipe.source,
-    recipe.description ?? null,
+    sqlValue(recipe.description ?? null),
     JSON.stringify(recipe.ingredients),
     JSON.stringify(recipe.steps),
     JSON.stringify(recipe.tools ?? []),
-    recipe.glassware ?? null,
-    recipe.garnish ?? null,
+    sqlValue(recipe.glassware ?? null),
+    sqlValue(recipe.garnish ?? null),
     JSON.stringify(recipe.tags ?? []),
     recipe.isFavorite ? 1 : 0,
-    recipe.rating ?? null,
+    sqlValue(recipe.rating ?? null),
     recipe.visibility ?? 'private',
     recipe.createdAt,
     recipe.updatedAt,

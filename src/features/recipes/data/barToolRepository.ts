@@ -1,10 +1,10 @@
-import { QueryResultRow } from 'react-native-nitro-sqlite';
+import { SQLiteItem } from 'react-native-nitro-sqlite';
 
 import { initializeCatalogDatabase } from '../../../catalog/db/client';
 import { BarTool } from '../ai/recipeAiTypes';
 import { knownBarTools } from './recipeConstants';
 
-type BarToolRow = QueryResultRow & {
+type BarToolRow = SQLiteItem & {
   available?: number;
   id?: string;
   name?: string;

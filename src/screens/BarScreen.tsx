@@ -19,17 +19,23 @@ import { catalogInventoryItems } from '../catalog/catalogInventory';
 import {
   archiveBarInventoryItem,
   removeBarInventoryItem,
+  restoreBarInventoryItem,
   saveBarInventoryItem,
   useBarInventoryItems,
 } from '../data/barInventoryStore';
 import { colors } from '../theme/colors';
-import { InventoryCategory, InventoryHolding, InventoryItem } from '../types/inventory';
+import {
+  InventoryCategory,
+  InventoryHolding,
+  InventoryItem,
+  InventoryVisibility,
+} from '../types/inventory';
 
 type ViewMode = 'list' | 'display';
 
 type StockStatus = 'inStock' | 'lowStock' | 'outOfStock';
 
-type SortOption = 'name' | 'rating' | 'quantity';
+type SortOption = 'name' | 'rating' | 'quantity' | 'updatedAt';
 
 type SortDirection = 'asc' | 'desc';
 
@@ -38,6 +44,7 @@ type OpenDropdown = 'category' | 'sort' | 'stock' | 'type' | null;
 type EditorMode = 'add' | 'edit';
 
 type BarFilterState = {
+  archiveStatus: 'active' | 'archived';
   categories: Array<InventoryCategory>;
   productTypes: Array<string>;
   query: string;
@@ -55,17 +62,25 @@ type SortSelection = {
 
 type ItemFormState = {
   abv: string;
+  brand: string;
   category: InventoryCategory;
   catalogItemId: string | null;
   description: string;
   holdings: Array<ItemHoldingFormState>;
   imageUri: string | null;
+  isOpen: boolean;
   name: string;
   notes: string;
+  proof: string;
   productType: string;
+  publicNotes: string;
   rating: string;
   ratingComments: string;
+  size: string;
+  subcategory: string;
+  tags: string;
   unit: InventoryItem['unit'];
+  visibility: InventoryVisibility;
 };
 
 type ItemHoldingFormState = {
@@ -78,8 +93,14 @@ const allCategories: Array<InventoryCategory> = [
   'spirit',
   'liqueur',
   'mixer',
+  'bitters',
+  'syrup',
+  'juice',
   'garnish',
-  'bitter',
+  'wine',
+  'beer',
+  'tool',
+  'glassware',
   'other',
 ];
 
@@ -88,6 +109,8 @@ const stockFilters: Array<StockStatus> = ['inStock', 'lowStock', 'outOfStock'];
 const sortSelections: Array<SortSelection> = [
   { direction: 'asc', label: 'Name A-Z', sortBy: 'name' },
   { direction: 'desc', label: 'Name Z-A', sortBy: 'name' },
+  { direction: 'desc', label: 'Recently updated', sortBy: 'updatedAt' },
+  { direction: 'asc', label: 'Oldest updated', sortBy: 'updatedAt' },
   { direction: 'desc', label: 'Rating high-low', sortBy: 'rating' },
   { direction: 'asc', label: 'Rating low-high', sortBy: 'rating' },
   { direction: 'desc', label: 'Quantity high-low', sortBy: 'quantity' },
@@ -95,6 +118,7 @@ const sortSelections: Array<SortSelection> = [
 ];
 
 const initialFilters: BarFilterState = {
+  archiveStatus: 'active',
   categories: [],
   productTypes: [],
   query: '',
@@ -106,17 +130,25 @@ const initialFilters: BarFilterState = {
 
 const emptyItemForm: ItemFormState = {
   abv: '',
+  brand: '',
   catalogItemId: null,
   category: 'spirit',
   description: '',
   holdings: [{ amount: '1', id: 'holding-1', label: 'Unopened bottle' }],
   imageUri: null,
+  isOpen: false,
   name: '',
   notes: '',
+  proof: '',
   productType: '',
+  publicNotes: '',
   rating: '',
   ratingComments: '',
+  size: '',
+  subcategory: '',
+  tags: '',
   unit: 'bottle',
+  visibility: 'private',
 };
 
 function BarScreen(): React.JSX.Element {
@@ -147,7 +179,11 @@ function BarScreen(): React.JSX.Element {
       .filter((item: InventoryItem): boolean => {
         const productType = item.productType ?? formatFilterLabel(item.category);
 
-        if (item.isArchived) {
+        if (filters.archiveStatus === 'active' && item.isArchived) {
+          return false;
+        }
+
+        if (filters.archiveStatus === 'archived' && !item.isArchived) {
           return false;
         }
 
@@ -172,8 +208,12 @@ function BarScreen(): React.JSX.Element {
 
         const searchableText = [
           item.name,
+          item.brand,
           item.category,
+          item.subcategory,
           item.productType,
+          item.size,
+          item.tags?.join(' '),
           item.description,
           item.notes,
           item.ratingComments,
@@ -232,9 +272,23 @@ function BarScreen(): React.JSX.Element {
     setExpandedItemId(null);
   };
 
+  const restoreItem = (itemId: string): void => {
+    restoreBarInventoryItem(itemId);
+    setExpandedItemId(itemId);
+    setFilters({ ...filters, archiveStatus: 'active' });
+  };
+
   const renderItem = ({ item }: ListRenderItemInfo<InventoryItem>): React.JSX.Element => {
     if (filters.viewMode === 'display') {
-      return <BarDisplayCard item={item} onEdit={openEditItem} />;
+      return (
+        <BarDisplayCard
+          item={item}
+          onArchive={archiveItem}
+          onEdit={openEditItem}
+          onRemove={removeItem}
+          onRestore={restoreItem}
+        />
+      );
     }
 
     return (
@@ -244,6 +298,7 @@ function BarScreen(): React.JSX.Element {
         isExpanded={item.id === expandedItemId}
         item={item}
         onRemove={removeItem}
+        onRestore={restoreItem}
         onPress={(): void => {
           setExpandedItemId((currentItemId: string | null): string | null => {
             return currentItemId === item.id ? null : item.id;
@@ -352,7 +407,9 @@ function BarControls({
       <View style={styles.pageHeader}>
         <View>
           <Text style={styles.pageTitle}>Bar</Text>
-          <Text style={styles.pageSubtitle}>{resultCount} stocked items</Text>
+          <Text style={styles.pageSubtitle}>
+            {resultCount} {filters.archiveStatus === 'archived' ? 'archived' : 'active'} item(s)
+          </Text>
         </View>
         <View style={styles.controlRow}>
           <Pressable
@@ -411,11 +468,29 @@ function BarControls({
             onChangeText={(query: string): void => {
               updateDraftFilters({ query });
             }}
-            placeholder="Search products"
+            placeholder="Search name or brand"
             placeholderTextColor={colors.textSecondary}
             style={styles.searchInput}
             value={draftFilters.query}
           />
+
+          <Text style={styles.formLabel}>Inventory status</Text>
+          <View style={styles.viewToggle}>
+            <SegmentButton
+              isActive={draftFilters.archiveStatus === 'active'}
+              label="Active"
+              onPress={(): void => {
+                updateDraftFilters({ archiveStatus: 'active' });
+              }}
+            />
+            <SegmentButton
+              isActive={draftFilters.archiveStatus === 'archived'}
+              label="Archived"
+              onPress={(): void => {
+                updateDraftFilters({ archiveStatus: 'archived' });
+              }}
+            />
+          </View>
 
           <DropdownFilter
             isOpen={openDropdown === 'type'}
@@ -687,6 +762,7 @@ type BarAccordionRowProps = {
   onEdit: (item: InventoryItem) => void;
   onPress: () => void;
   onRemove: (itemId: string) => void;
+  onRestore: (itemId: string) => void;
 };
 
 function BarAccordionRow({
@@ -696,6 +772,7 @@ function BarAccordionRow({
   onEdit,
   onPress,
   onRemove,
+  onRestore,
 }: BarAccordionRowProps): React.JSX.Element {
   return (
     <View style={styles.accordionCard}>
@@ -718,7 +795,13 @@ function BarAccordionRow({
       </Pressable>
 
       {isExpanded ? (
-        <ProductDetails item={item} onArchive={onArchive} onEdit={onEdit} onRemove={onRemove} />
+        <ProductDetails
+          item={item}
+          onArchive={onArchive}
+          onEdit={onEdit}
+          onRemove={onRemove}
+          onRestore={onRestore}
+        />
       ) : null}
     </View>
   );
@@ -732,9 +815,16 @@ type ProductActionsProps = ProductCardProps & {
   onArchive?: (itemId: string) => void;
   onEdit: (item: InventoryItem) => void;
   onRemove?: (itemId: string) => void;
+  onRestore?: (itemId: string) => void;
 };
 
-function BarDisplayCard({ item, onEdit }: ProductActionsProps): React.JSX.Element {
+function BarDisplayCard({
+  item,
+  onArchive,
+  onEdit,
+  onRemove,
+  onRestore,
+}: ProductActionsProps): React.JSX.Element {
   return (
     <View style={styles.displayCard}>
       <View style={styles.displayStatusRow}>
@@ -757,6 +847,42 @@ function BarDisplayCard({ item, onEdit }: ProductActionsProps): React.JSX.Elemen
       >
         <Text style={styles.secondaryButtonText}>Edit</Text>
       </Pressable>
+      {item.isArchived ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={(): void => {
+            onRestore?.(item.id);
+          }}
+          style={({ pressed }): StyleProp<ViewStyle> => {
+            return [styles.secondaryButton, pressed ? styles.controlPressed : null];
+          }}
+        >
+          <Text style={styles.secondaryButtonText}>Restore</Text>
+        </Pressable>
+      ) : (
+        <Pressable
+          accessibilityRole="button"
+          onPress={(): void => {
+            onArchive?.(item.id);
+          }}
+          style={({ pressed }): StyleProp<ViewStyle> => {
+            return [styles.secondaryButton, pressed ? styles.controlPressed : null];
+          }}
+        >
+          <Text style={styles.secondaryButtonText}>Archive</Text>
+        </Pressable>
+      )}
+      <Pressable
+        accessibilityRole="button"
+        onPress={(): void => {
+          onRemove?.(item.id);
+        }}
+        style={({ pressed }): StyleProp<ViewStyle> => {
+          return [styles.dangerButton, pressed ? styles.controlPressed : null];
+        }}
+      >
+        <Text style={styles.dangerButtonText}>Delete</Text>
+      </Pressable>
     </View>
   );
 }
@@ -766,10 +892,22 @@ function ProductDetails({
   onArchive,
   onEdit,
   onRemove,
+  onRestore,
 }: ProductActionsProps): React.JSX.Element {
   return (
     <View style={styles.details}>
       <DetailLine label="Stock" value={`${item.quantity} ${item.unit} available`} />
+      {item.brand ? <DetailLine label="Brand" value={item.brand} /> : null}
+      {item.subcategory ? <DetailLine label="Subcategory" value={item.subcategory} /> : null}
+      {item.size ? <DetailLine label="Size" value={item.size} /> : null}
+      {item.proof !== null && item.proof !== undefined ? (
+        <DetailLine label="Proof" value={`${item.proof}`} />
+      ) : null}
+      <DetailLine label="Open" value={item.isOpen ? 'Yes' : 'No'} />
+      <DetailLine label="Visibility" value={formatFilterLabel(item.visibility ?? 'private')} />
+      {item.tags && item.tags.length > 0 ? (
+        <DetailLine label="Tags" value={item.tags.join(', ')} />
+      ) : null}
       {item.holdings?.map((holding: InventoryHolding): React.JSX.Element => {
         return (
           <DetailLine
@@ -797,17 +935,31 @@ function ProductDetails({
         >
           <Text style={styles.secondaryButtonText}>Edit</Text>
         </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          onPress={(): void => {
-            onArchive?.(item.id);
-          }}
-          style={({ pressed }): StyleProp<ViewStyle> => {
-            return [styles.secondaryButton, pressed ? styles.controlPressed : null];
-          }}
-        >
-          <Text style={styles.secondaryButtonText}>Archive</Text>
-        </Pressable>
+        {item.isArchived ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={(): void => {
+              onRestore?.(item.id);
+            }}
+            style={({ pressed }): StyleProp<ViewStyle> => {
+              return [styles.secondaryButton, pressed ? styles.controlPressed : null];
+            }}
+          >
+            <Text style={styles.secondaryButtonText}>Restore</Text>
+          </Pressable>
+        ) : (
+          <Pressable
+            accessibilityRole="button"
+            onPress={(): void => {
+              onArchive?.(item.id);
+            }}
+            style={({ pressed }): StyleProp<ViewStyle> => {
+              return [styles.secondaryButton, pressed ? styles.controlPressed : null];
+            }}
+          >
+            <Text style={styles.secondaryButtonText}>Archive</Text>
+          </Pressable>
+        )}
         <Pressable
           accessibilityRole="button"
           onPress={(): void => {
@@ -817,7 +969,7 @@ function ProductDetails({
             return [styles.dangerButton, pressed ? styles.controlPressed : null];
           }}
         >
-          <Text style={styles.dangerButtonText}>Remove</Text>
+          <Text style={styles.dangerButtonText}>Delete</Text>
         </Pressable>
       </View>
     </View>
@@ -1017,6 +1169,37 @@ function ItemEditorModal({
               ) : null}
             </View>
 
+            <View style={styles.formRow}>
+              <View style={styles.formColumn}>
+                <Text style={styles.formLabel}>Brand</Text>
+                <TextInput
+                  onChangeText={(brand: string): void => {
+                    updateForm({ brand });
+                  }}
+                  placeholder="Brand"
+                  placeholderTextColor={colors.textSecondary}
+                  style={styles.editorInput}
+                  value={form.brand}
+                />
+              </View>
+              <View style={styles.formColumn}>
+                <Text style={styles.formLabel}>Subcategory</Text>
+                <TextInput
+                  editable={!isCatalogSelected}
+                  onChangeText={(subcategory: string): void => {
+                    updateForm({ subcategory });
+                  }}
+                  placeholder="Bourbon"
+                  placeholderTextColor={colors.textSecondary}
+                  style={[
+                    styles.editorInput,
+                    isCatalogSelected ? styles.editorInputDisabled : null,
+                  ]}
+                  value={form.subcategory}
+                />
+              </View>
+            </View>
+
             <View style={styles.formGroup}>
               <Text style={styles.formLabel}>Category</Text>
               <View style={styles.optionRow}>
@@ -1072,6 +1255,42 @@ function ItemEditorModal({
               </View>
             </View>
 
+            <View style={styles.formRow}>
+              <View style={styles.formColumn}>
+                <Text style={styles.formLabel}>Proof</Text>
+                <TextInput
+                  editable={!isCatalogSelected}
+                  keyboardType="numeric"
+                  onChangeText={(proof: string): void => {
+                    updateForm({ proof });
+                  }}
+                  placeholder="80"
+                  placeholderTextColor={colors.textSecondary}
+                  style={[
+                    styles.editorInput,
+                    isCatalogSelected ? styles.editorInputDisabled : null,
+                  ]}
+                  value={form.proof}
+                />
+              </View>
+              <View style={styles.formColumn}>
+                <Text style={styles.formLabel}>Size</Text>
+                <TextInput
+                  editable={!isCatalogSelected}
+                  onChangeText={(size: string): void => {
+                    updateForm({ size });
+                  }}
+                  placeholder="750 ml"
+                  placeholderTextColor={colors.textSecondary}
+                  style={[
+                    styles.editorInput,
+                    isCatalogSelected ? styles.editorInputDisabled : null,
+                  ]}
+                  value={form.size}
+                />
+              </View>
+            </View>
+
             <View style={styles.formGroup}>
               <Text style={styles.formLabel}>Unit</Text>
               <View style={styles.optionRow}>
@@ -1089,6 +1308,26 @@ function ItemEditorModal({
                     );
                   },
                 )}
+              </View>
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Bottle status</Text>
+              <View style={styles.viewToggle}>
+                <SegmentButton
+                  isActive={!form.isOpen}
+                  label="Unopened"
+                  onPress={(): void => {
+                    updateForm({ isOpen: false });
+                  }}
+                />
+                <SegmentButton
+                  isActive={form.isOpen}
+                  label="Open"
+                  onPress={(): void => {
+                    updateForm({ isOpen: true });
+                  }}
+                />
               </View>
             </View>
 
@@ -1241,6 +1480,53 @@ function ItemEditorModal({
                 value={form.notes}
               />
             </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Public notes</Text>
+              <TextInput
+                multiline
+                onChangeText={(publicNotes: string): void => {
+                  updateForm({ publicNotes });
+                }}
+                placeholder="Optional note safe for guests"
+                placeholderTextColor={colors.textSecondary}
+                style={[styles.editorInput, styles.editorTextArea]}
+                value={form.publicNotes}
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Tags</Text>
+              <TextInput
+                onChangeText={(tags: string): void => {
+                  updateForm({ tags });
+                }}
+                placeholder="smoky, favorite, top shelf"
+                placeholderTextColor={colors.textSecondary}
+                style={styles.editorInput}
+                value={form.tags}
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Visibility</Text>
+              <View style={styles.optionRow}>
+                {(['private', 'shared', 'guest_visible'] as const).map(
+                  (visibility: InventoryVisibility): React.JSX.Element => {
+                    return (
+                      <FormOption
+                        key={visibility}
+                        isSelected={form.visibility === visibility}
+                        label={formatFilterLabel(visibility)}
+                        onPress={(): void => {
+                          updateForm({ visibility });
+                        }}
+                      />
+                    );
+                  },
+                )}
+              </View>
+            </View>
           </ScrollView>
 
           <View style={styles.editorFooter}>
@@ -1322,17 +1608,25 @@ function EmptyState(): React.JSX.Element {
 function createFormFromItem(item: InventoryItem): ItemFormState {
   return {
     abv: item.abv?.toString() ?? '',
+    brand: item.brand ?? '',
     catalogItemId: null,
     category: item.category,
     description: item.description ?? '',
     holdings: createHoldingFormFromItem(item),
     imageUri: item.imageUri ?? null,
+    isOpen: Boolean(item.isOpen),
     name: item.name,
     notes: item.notes ?? '',
+    proof: item.proof?.toString() ?? '',
     productType: item.productType ?? '',
+    publicNotes: item.publicNotes ?? '',
     rating: item.rating?.toString() ?? '',
     ratingComments: item.ratingComments ?? '',
+    size: item.size ?? '',
+    subcategory: item.subcategory ?? '',
+    tags: item.tags?.join(', ') ?? '',
     unit: item.unit,
+    visibility: item.visibility ?? 'private',
   };
 }
 
@@ -1345,19 +1639,27 @@ function createItemFromForm(form: ItemFormState, id: string): InventoryItem | nu
 
   return {
     abv: parseOptionalNumber(form.abv),
+    brand: parseOptionalText(form.brand) ?? null,
     category: form.category,
     description: parseOptionalText(form.description),
     holdings: createInventoryHoldings(form.holdings),
     id,
     imageUri: form.imageUri ?? undefined,
+    isOpen: form.isOpen,
     minStock: 0,
     name,
     notes: parseOptionalText(form.notes),
     productType: parseOptionalText(form.productType),
+    proof: parseOptionalNumber(form.proof) ?? null,
+    publicNotes: parseOptionalText(form.publicNotes) ?? null,
     quantity: calculateHoldingQuantity(form.holdings),
     rating: clampRating(parseOptionalNumber(form.rating)),
     ratingComments: parseOptionalText(form.ratingComments),
+    size: parseOptionalText(form.size) ?? null,
+    subcategory: parseOptionalText(form.subcategory) ?? null,
+    tags: parseTags(form.tags),
     unit: form.unit,
+    visibility: form.visibility,
   };
 }
 
@@ -1434,6 +1736,19 @@ function clampRating(value: number | undefined): number | undefined {
   return Math.min(5, Math.max(0, value));
 }
 
+function parseTags(value: string): Array<string> | undefined {
+  const tags = value
+    .split(',')
+    .map((tag: string): string => {
+      return tag.trim();
+    })
+    .filter((tag: string): boolean => {
+      return tag.length > 0;
+    });
+
+  return tags.length > 0 ? tags : undefined;
+}
+
 function getStockStatus(item: InventoryItem): StockStatus {
   if (item.quantity <= 0) {
     return 'outOfStock';
@@ -1486,7 +1801,17 @@ function compareInventoryItems(
     return (left.quantity - right.quantity) * directionMultiplier;
   }
 
+  if (sortBy === 'updatedAt') {
+    return (parseDateValue(left.updatedAt) - parseDateValue(right.updatedAt)) * directionMultiplier;
+  }
+
   return left.name.localeCompare(right.name) * directionMultiplier;
+}
+
+function parseDateValue(value: string | undefined): number {
+  const parsed = Date.parse(value ?? '');
+
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function getSortLabel(filters: BarFilterState): string {
@@ -1520,9 +1845,12 @@ function formatRating(rating: number | undefined): string {
 }
 
 function formatFilterLabel(value: string): string {
-  return value.replace(/([A-Z])/g, ' $1').replace(/^./, (firstLetter: string): string => {
-    return firstLetter.toUpperCase();
-  });
+  return value
+    .replace(/_/g, ' ')
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/^./, (firstLetter: string): string => {
+      return firstLetter.toUpperCase();
+    });
 }
 
 const styles = StyleSheet.create({

@@ -14,12 +14,24 @@ import {
 
 import headerLogo from './assets/images/logos/barTrackerLogo-horizontal.png';
 import { bootstrapCatalogDatabase } from './catalog/bootstrap';
+import { listItems } from './data/barInventoryRepository';
+import { hydrateBarInventoryItems } from './data/barInventoryStore';
+import { hydrateShareSettings } from './data/barShareSettingsStore';
 import BarScreen from './screens/BarScreen';
 import InventoryScreen from './screens/InventoryScreen';
+import ManageSharingScreen from './screens/ManageSharingScreen';
 import RecipesScreen from './screens/RecipesScreen';
+import SharePreviewScreen from './screens/SharePreviewScreen';
 import { colors } from './theme/colors';
 
-type RouteName = 'Home' | 'Bar' | 'Recipes' | 'Shopping Cart' | 'Share' | 'Connected Bars';
+type RouteName =
+  | 'Home'
+  | 'Bar'
+  | 'Recipes'
+  | 'Shopping Cart'
+  | 'Share'
+  | 'Manage Sharing'
+  | 'Connected Bars';
 
 const routes: Array<RouteName> = [
   'Home',
@@ -27,6 +39,7 @@ const routes: Array<RouteName> = [
   'Recipes',
   'Shopping Cart',
   'Share',
+  'Manage Sharing',
   'Connected Bars',
 ];
 
@@ -35,9 +48,14 @@ function App(): React.JSX.Element {
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
 
   useEffect((): void => {
-    bootstrapCatalogDatabase().catch((error: unknown): void => {
-      console.error('Failed to initialize catalog database.', error);
-    });
+    bootstrapCatalogDatabase()
+      .then(async (): Promise<void> => {
+        await hydrateBarInventoryItems();
+        await hydrateShareSettings(await listItems());
+      })
+      .catch((error: unknown): void => {
+        console.error('Failed to initialize local database.', error);
+      });
   }, []);
 
   const navigateToRoute = (route: RouteName): void => {
@@ -55,7 +73,7 @@ function App(): React.JSX.Element {
           }}
         />
         <View style={styles.content}>
-          <ActiveScreen route={activeRoute} />
+          <ActiveScreen onNavigate={navigateToRoute} route={activeRoute} />
         </View>
       </View>
       <NavigationMenu
@@ -152,10 +170,11 @@ type SimplePageProps = {
 };
 
 type ActiveScreenProps = {
+  onNavigate: (route: RouteName) => void;
   route: RouteName;
 };
 
-function ActiveScreen({ route }: ActiveScreenProps): React.JSX.Element {
+function ActiveScreen({ onNavigate, route }: ActiveScreenProps): React.JSX.Element {
   if (route === 'Home') {
     return <InventoryScreen />;
   }
@@ -166,6 +185,26 @@ function ActiveScreen({ route }: ActiveScreenProps): React.JSX.Element {
 
   if (route === 'Recipes') {
     return <RecipesScreen />;
+  }
+
+  if (route === 'Share') {
+    return (
+      <SharePreviewScreen
+        onManageSharing={(): void => {
+          onNavigate('Manage Sharing');
+        }}
+      />
+    );
+  }
+
+  if (route === 'Manage Sharing') {
+    return (
+      <ManageSharingScreen
+        onPreview={(): void => {
+          onNavigate('Share');
+        }}
+      />
+    );
   }
 
   return <SimplePage title={route} />;

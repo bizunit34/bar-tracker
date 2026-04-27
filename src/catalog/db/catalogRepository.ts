@@ -1,4 +1,4 @@
-import { NitroSQLiteConnection, QueryResultRow, SQLiteValue } from 'react-native-nitro-sqlite';
+import { NitroSQLiteConnection, SQLiteItem, SQLiteValue } from 'react-native-nitro-sqlite';
 
 import { CatalogImportAttributeValue, NormalizedCatalogImportRecord } from '../types';
 
@@ -24,8 +24,12 @@ function serializeAttributeValue(value: CatalogImportAttributeValue): string | n
   return String(value);
 }
 
+function sqlValue<T extends SQLiteValue | null>(value: T): Exclude<T, null> | undefined {
+  return value === null ? undefined : (value as Exclude<T, null>);
+}
+
 async function findCatalogItemId(db: SqlExecutor, externalKey: string): Promise<number> {
-  const result = await db.executeAsync<QueryResultRow>(
+  const result = await db.executeAsync<SQLiteItem>(
     'SELECT id FROM catalog_items WHERE external_key = ? LIMIT 1',
     [externalKey],
   );
@@ -56,7 +60,7 @@ export async function recordImportBatch(
       record_count,
       imported_at
     ) VALUES (?, ?, ?, ?, ?)`,
-    [params.id, params.source, params.sourceFile, params.recordCount, params.importedAt],
+    [params.id, params.source, sqlValue(params.sourceFile), params.recordCount, params.importedAt],
   );
 }
 
@@ -68,26 +72,26 @@ export async function upsertCatalogImportRecord(
   const values: Array<SQLiteValue> = [
     record.externalKey,
     record.source,
-    record.sourceFile ?? null,
-    record.importBatchId ?? null,
+    sqlValue(record.sourceFile ?? null),
+    sqlValue(record.importBatchId ?? null),
     record.itemType,
-    record.liquorTypeRaw ?? null,
-    record.category ?? null,
-    record.subcategory ?? null,
-    record.adaNumber ?? null,
-    record.liquorCode ?? null,
-    record.sku ?? null,
+    sqlValue(record.liquorTypeRaw ?? null),
+    sqlValue(record.category ?? null),
+    sqlValue(record.subcategory ?? null),
+    sqlValue(record.adaNumber ?? null),
+    sqlValue(record.liquorCode ?? null),
+    sqlValue(record.sku ?? null),
     record.name,
     record.normalizedName,
-    record.brand ?? null,
-    record.proof ?? null,
-    record.abv ?? null,
-    record.bottleSizeMl ?? null,
-    record.caseSize ?? null,
-    record.basePrice ?? null,
-    record.licenseePrice ?? null,
-    record.minimumShelfPrice ?? null,
-    record.status ?? null,
+    sqlValue(record.brand ?? null),
+    sqlValue(record.proof ?? null),
+    sqlValue(record.abv ?? null),
+    sqlValue(record.bottleSizeMl ?? null),
+    sqlValue(record.caseSize ?? null),
+    sqlValue(record.basePrice ?? null),
+    sqlValue(record.licenseePrice ?? null),
+    sqlValue(record.minimumShelfPrice ?? null),
+    sqlValue(record.status ?? null),
     boolToInt(record.isNew),
     boolToInt(record.isActive),
     updatedAt,
@@ -169,7 +173,13 @@ export async function upsertCatalogImportRecord(
         value = excluded.value,
         value_type = excluded.value_type,
         updated_at = excluded.updated_at`,
-      [catalogItemId, name, serializeAttributeValue(value), attributeValueType(value), updatedAt],
+      [
+        catalogItemId,
+        name,
+        sqlValue(serializeAttributeValue(value)),
+        attributeValueType(value),
+        updatedAt,
+      ],
     );
   }
 
@@ -177,9 +187,7 @@ export async function upsertCatalogImportRecord(
 }
 
 export async function countCatalogItems(db: SqlExecutor): Promise<number> {
-  const result = await db.executeAsync<QueryResultRow>(
-    'SELECT COUNT(*) AS count FROM catalog_items',
-  );
+  const result = await db.executeAsync<SQLiteItem>('SELECT COUNT(*) AS count FROM catalog_items');
   const count = result.rows?._array[0]?.count;
 
   return typeof count === 'number' ? count : Number(count ?? 0);

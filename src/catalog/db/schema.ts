@@ -73,6 +73,24 @@ export const catalogSchemaStatements: Array<string> = [
     available INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS bar_inventory_items (
+    id TEXT PRIMARY KEY NOT NULL,
+    item_json TEXT NOT NULL,
+    is_archived INTEGER NOT NULL DEFAULT 0,
+    visibility TEXT NOT NULL DEFAULT 'private',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    archived_at TEXT
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_bar_inventory_items_archived
+    ON bar_inventory_items(is_archived)`,
+  `CREATE INDEX IF NOT EXISTS idx_bar_inventory_items_visibility
+    ON bar_inventory_items(visibility)`,
+  `CREATE TABLE IF NOT EXISTS bar_share_settings (
+    id TEXT PRIMARY KEY NOT NULL,
+    settings_json TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
   `CREATE INDEX IF NOT EXISTS idx_catalog_items_normalized_name
     ON catalog_items(normalized_name)`,
   `CREATE INDEX IF NOT EXISTS idx_catalog_items_category

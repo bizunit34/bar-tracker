@@ -1,4 +1,5 @@
 import { normalizeInventoryForRecipeGeneration } from './inventoryNormalization';
+import { RECIPE_AI_PAYLOAD_LIMITS } from './payloadOptimization';
 import {
   BarInventoryIngredient,
   BarTool,
@@ -23,7 +24,10 @@ export function createRecipeRecommendationSession(input: {
   quizAnswers?: RecipeQuizAnswers;
 }): RecipeRecommendationSession {
   const now = new Date().toISOString();
-  const favoriteRecipeSnapshot = input.favoriteRecipes ?? [];
+  const favoriteRecipeSnapshot = (input.favoriteRecipes ?? []).slice(
+    0,
+    RECIPE_AI_PAYLOAD_LIMITS.favoriteRecipes,
+  );
 
   return {
     createdAt: now,

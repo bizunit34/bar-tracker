@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -173,6 +173,8 @@ function RecipesScreen(): React.JSX.Element {
   const [session, setSession] = useState<RecipeRecommendationSession | null>(null);
   const [selectedSavedRecipe, setSelectedSavedRecipe] = useState<Recipe | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const pendingSessionIdRef = useRef<string | null>(null);
 
   const visibleInventory = useMemo((): Array<InventoryItem> => {
     return inventoryItems.filter((item: InventoryItem): boolean => {
@@ -223,6 +225,10 @@ function RecipesScreen(): React.JSX.Element {
   };
 
   const generateRecipes = async (): Promise<void> => {
+    if (isGenerating) {
+      return;
+    }
+
     if (mode === 'favorites' && favoriteRecipes.length === 0) {
       setErrorMessage('Favorites-based generation needs at least one saved recipe.');
 
@@ -240,6 +246,8 @@ function RecipesScreen(): React.JSX.Element {
 
     setSession(recommendationSession);
     setErrorMessage(null);
+    setIsGenerating(true);
+    pendingSessionIdRef.current = recommendationSession.id;
     setStep('loading');
 
     try {
@@ -255,6 +263,9 @@ function RecipesScreen(): React.JSX.Element {
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Recipe generation failed.');
       setStep('confirm');
+    } finally {
+      pendingSessionIdRef.current = null;
+      setIsGenerating(false);
     }
   };
 
@@ -293,6 +304,7 @@ function RecipesScreen(): React.JSX.Element {
         mode={mode}
         preferences={preferences}
         quizAnswers={mode === 'quiz' ? quizAnswers : undefined}
+        isGenerating={isGenerating || pendingSessionIdRef.current !== null}
         onBack={(): void => {
           setStep(mode === 'quiz' ? 'quiz' : 'home');
         }}
@@ -597,6 +609,7 @@ function QuizStep({
 
 type ConfirmationStepProps = {
   favoriteCount: number;
+  isGenerating: boolean;
   mode: RecipeGenerationMode;
   onBack: () => void;
   onGenerate: () => void;
@@ -607,6 +620,7 @@ type ConfirmationStepProps = {
 
 function ConfirmationStep({
   favoriteCount,
+  isGenerating,
   mode,
   onBack,
   onGenerate,
@@ -704,7 +718,11 @@ function ConfirmationStep({
 
       <View style={styles.footerActions}>
         <SecondaryButton label="Back" onPress={onBack} />
-        <PrimaryButton label="Generate Recipes" onPress={onGenerate} />
+        <PrimaryButton
+          isDisabled={isGenerating}
+          label={isGenerating ? 'Generating...' : 'Generate Recipes'}
+          onPress={onGenerate}
+        />
       </View>
     </ScrollView>
   );

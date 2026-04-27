@@ -1,5 +1,6 @@
 import { buildRecipeGenerationPayload } from '../ai/buildRecipePrompt';
 import { mockGenerateRecipeRecommendations } from '../ai/mockRecipeGenerator';
+import { optimizeRecipeGenerationRequest } from '../ai/payloadOptimization';
 import {
   RecipeGenerationRequest,
   RecipeGenerationResult,
@@ -32,11 +33,17 @@ export function createRecipeGenerationRequestFromSession(
 export async function generateRecipeRecommendations(
   session: RecipeRecommendationSession,
 ): Promise<RecipeGenerationResult> {
-  const request = createRecipeGenerationRequestFromSession(session);
+  const request = optimizeRecipeGenerationRequest(
+    createRecipeGenerationRequestFromSession(session),
+  );
+  const useMockRecipeAi = process.env?.EXPO_PUBLIC_USE_MOCK_RECIPE_AI !== 'false';
 
   buildRecipeGenerationPayload(request);
 
-  // TODO: Replace the mock with a secure backend endpoint that owns AI provider credentials.
+  if (!useMockRecipeAi) {
+    // TODO: Call the secure recipe AI backend endpoint here. The mobile app must not own provider credentials.
+  }
+
   return validateRecipeGenerationResult(await mockGenerateRecipeRecommendations(request), {
     inventory: request.normalizedInventory,
     missingIngredientPolicy: session.missingIngredientPolicy,
