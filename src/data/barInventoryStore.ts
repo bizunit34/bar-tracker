@@ -66,6 +66,10 @@ export async function hydrateBarInventoryItems(): Promise<void> {
   emitChange();
 }
 
+export async function refreshBarInventoryItems(): Promise<void> {
+  await hydrateBarInventoryItems();
+}
+
 export function useBarInventoryItems(): Array<InventoryItem> {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }

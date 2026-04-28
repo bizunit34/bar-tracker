@@ -17,8 +17,12 @@ import { bootstrapCatalogDatabase } from './catalog/bootstrap';
 import { listItems } from './data/barInventoryRepository';
 import { hydrateBarInventoryItems } from './data/barInventoryStore';
 import { hydrateShareSettings } from './data/barShareSettingsStore';
+import { hydrateLocalShareLinks } from './data/localShareLinkStore';
 import BarScreen from './screens/BarScreen';
+import EquipmentScreen from './screens/EquipmentScreen';
 import InventoryScreen from './screens/InventoryScreen';
+import InventoryTransferScreen from './screens/InventoryTransferScreen';
+import ManageShareLinksScreen from './screens/ManageShareLinksScreen';
 import ManageSharingScreen from './screens/ManageSharingScreen';
 import RecipesScreen from './screens/RecipesScreen';
 import SharePreviewScreen from './screens/SharePreviewScreen';
@@ -29,7 +33,10 @@ type RouteName =
   | 'Bar'
   | 'Recipes'
   | 'Shopping Cart'
+  | 'Tools & Glassware'
+  | 'Import / Export'
   | 'Share'
+  | 'Share Links'
   | 'Manage Sharing'
   | 'Connected Bars';
 
@@ -38,7 +45,10 @@ const routes: Array<RouteName> = [
   'Bar',
   'Recipes',
   'Shopping Cart',
+  'Tools & Glassware',
+  'Import / Export',
   'Share',
+  'Share Links',
   'Manage Sharing',
   'Connected Bars',
 ];
@@ -52,6 +62,7 @@ function App(): React.JSX.Element {
       .then(async (): Promise<void> => {
         await hydrateBarInventoryItems();
         await hydrateShareSettings(await listItems());
+        await hydrateLocalShareLinks();
       })
       .catch((error: unknown): void => {
         console.error('Failed to initialize local database.', error);
@@ -176,7 +187,13 @@ type ActiveScreenProps = {
 
 function ActiveScreen({ onNavigate, route }: ActiveScreenProps): React.JSX.Element {
   if (route === 'Home') {
-    return <InventoryScreen />;
+    return (
+      <InventoryScreen
+        onManageEquipment={(): void => {
+          onNavigate('Tools & Glassware');
+        }}
+      />
+    );
   }
 
   if (route === 'Bar') {
@@ -187,11 +204,29 @@ function ActiveScreen({ onNavigate, route }: ActiveScreenProps): React.JSX.Eleme
     return <RecipesScreen />;
   }
 
+  if (route === 'Tools & Glassware') {
+    return <EquipmentScreen />;
+  }
+
+  if (route === 'Import / Export') {
+    return <InventoryTransferScreen />;
+  }
+
   if (route === 'Share') {
     return (
       <SharePreviewScreen
         onManageSharing={(): void => {
           onNavigate('Manage Sharing');
+        }}
+      />
+    );
+  }
+
+  if (route === 'Share Links') {
+    return (
+      <ManageShareLinksScreen
+        onCreateNewLink={(): void => {
+          onNavigate('Share');
         }}
       />
     );

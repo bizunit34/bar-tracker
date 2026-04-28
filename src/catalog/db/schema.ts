@@ -91,6 +91,19 @@ export const catalogSchemaStatements: Array<string> = [
     settings_json TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS local_share_links (
+    id TEXT PRIMARY KEY NOT NULL,
+    slug TEXT NOT NULL UNIQUE,
+    share_url TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    management_token TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    disabled_at TEXT
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_local_share_links_disabled
+    ON local_share_links(disabled_at)`,
   `CREATE INDEX IF NOT EXISTS idx_catalog_items_normalized_name
     ON catalog_items(normalized_name)`,
   `CREATE INDEX IF NOT EXISTS idx_catalog_items_category

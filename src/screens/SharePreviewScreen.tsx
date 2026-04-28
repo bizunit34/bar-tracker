@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
+  Linking,
   Pressable,
   ScrollView,
   Share,
@@ -13,6 +14,7 @@ import {
 import { useBarInventoryItems } from '../data/barInventoryStore';
 import { useBarShareSettings } from '../data/barShareSettingsStore';
 import { mapInventoryToGuestVisibleItems } from '../data/guestInventoryMapping';
+import { saveLocalShareLinkRecord } from '../data/localShareLinkStore';
 import {
   createShareLink,
   CreateShareLinkResult,
@@ -90,6 +92,17 @@ function SharePreviewScreen({ onManageSharing }: SharePreviewScreenProps): React
       });
 
       setShareLink(result);
+      saveLocalShareLinkRecord({
+        createdAt: result.snapshot.createdAt,
+        description: result.snapshot.description ?? null,
+        disabledAt: result.snapshot.disabledAt ?? null,
+        id: result.snapshot.id,
+        managementToken: result.managementToken,
+        shareUrl: result.shareUrl,
+        slug: result.slug,
+        title: result.snapshot.title,
+        updatedAt: result.snapshot.updatedAt,
+      });
     } catch (error) {
       setShareLinkError(
         error instanceof Error ? error.message : 'Could not create the share link.',
@@ -110,6 +123,20 @@ function SharePreviewScreen({ onManageSharing }: SharePreviewScreenProps): React
     });
   };
 
+  const previewPublicLink = async (): Promise<void> => {
+    if (!shareLink) {
+      return;
+    }
+
+    const canOpen = await Linking.canOpenURL(shareLink.shareUrl);
+
+    if (!canOpen) {
+      throw new Error('This device cannot open the share link.');
+    }
+
+    await Linking.openURL(shareLink.shareUrl);
+  };
+
   const disablePublicShareLink = async (): Promise<void> => {
     if (!shareLink) {
       return;
@@ -119,7 +146,18 @@ function SharePreviewScreen({ onManageSharing }: SharePreviewScreenProps): React
     setShareLinkError(null);
 
     try {
-      await disableShareLink(shareLink.snapshot.slug);
+      const snapshot = await disableShareLink(shareLink.snapshot.slug, shareLink.managementToken);
+      saveLocalShareLinkRecord({
+        createdAt: snapshot.createdAt,
+        description: snapshot.description ?? null,
+        disabledAt: snapshot.disabledAt ?? new Date().toISOString(),
+        id: snapshot.id,
+        managementToken: shareLink.managementToken,
+        shareUrl: shareLink.shareUrl,
+        slug: snapshot.slug,
+        title: snapshot.title,
+        updatedAt: snapshot.updatedAt,
+      });
       setShareLink(null);
     } catch (error) {
       setShareLinkError(
@@ -164,6 +202,21 @@ function SharePreviewScreen({ onManageSharing }: SharePreviewScreenProps): React
               {shareLink.shareUrl}
             </Text>
             <View style={styles.linkActions}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={(): void => {
+                  previewPublicLink().catch((error: unknown): void => {
+                    setShareLinkError(
+                      error instanceof Error ? error.message : 'Could not preview the link.',
+                    );
+                  });
+                }}
+                style={({ pressed }): StyleProp<ViewStyle> => {
+                  return [styles.secondaryButton, pressed ? styles.controlPressed : null];
+                }}
+              >
+                <Text style={styles.secondaryButtonText}>Preview</Text>
+              </Pressable>
               <Pressable
                 accessibilityRole="button"
                 onPress={(): void => {

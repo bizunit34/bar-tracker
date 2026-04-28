@@ -20,7 +20,9 @@ export type CreateShareLinkInput = {
 };
 
 export type CreateShareLinkResult = {
+  managementToken: string;
   shareUrl: string;
+  slug: string;
   snapshot: BarShareSnapshot;
 };
 
@@ -56,22 +58,33 @@ export async function createShareLink(input: CreateShareLinkInput): Promise<Crea
   }
 
   const body = (await response.json()) as {
+    managementToken?: string;
     shareUrl?: string;
+    slug?: string;
     snapshot?: BarShareSnapshot;
   };
 
-  if (!body.shareUrl || !body.snapshot) {
+  if (!body.managementToken || !body.shareUrl || !body.slug || !body.snapshot) {
     throw new Error('Share link response was missing link details.');
   }
 
   return {
+    managementToken: body.managementToken,
     shareUrl: body.shareUrl,
+    slug: body.slug,
     snapshot: body.snapshot,
   };
 }
 
-export async function disableShareLink(slug: string): Promise<BarShareSnapshot> {
+export async function disableShareLink(
+  slug: string,
+  managementToken: string,
+): Promise<BarShareSnapshot> {
   const response = await fetch(`${barTrackerApiBaseUrl}/api/shares/${encodeURIComponent(slug)}`, {
+    body: JSON.stringify({ managementToken }),
+    headers: {
+      'Content-Type': 'application/json',
+    },
     method: 'DELETE',
   });
 

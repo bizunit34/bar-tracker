@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
+  Alert,
   FlatList,
   Image,
   ListRenderItemInfo,
@@ -38,6 +39,8 @@ type StockStatus = 'inStock' | 'lowStock' | 'outOfStock';
 type SortOption = 'name' | 'rating' | 'quantity' | 'updatedAt';
 
 type SortDirection = 'asc' | 'desc';
+
+type EmptyStateKind = 'noInventory' | 'noSearchResults' | 'noArchivedItems';
 
 type OpenDropdown = 'category' | 'sort' | 'stock' | 'type' | null;
 
@@ -278,15 +281,84 @@ function BarScreen(): React.JSX.Element {
     setFilters({ ...filters, archiveStatus: 'active' });
   };
 
+  const confirmRemoveItem = (item: InventoryItem): void => {
+    Alert.alert('Delete item?', `Delete ${item.name} permanently? This cannot be undone.`, [
+      { style: 'cancel', text: 'Cancel' },
+      {
+        style: 'destructive',
+        text: 'Delete',
+        onPress: (): void => {
+          removeItem(item.id);
+        },
+      },
+    ]);
+  };
+
+  const duplicateItem = (item: InventoryItem): void => {
+    const now = new Date().toISOString();
+    const duplicatedItem: InventoryItem = {
+      ...item,
+      archivedAt: null,
+      createdAt: now,
+      id: createInventoryItemId(`${item.name}-copy`),
+      isArchived: false,
+      name: `${item.name} Copy`,
+      updatedAt: now,
+    };
+
+    saveBarInventoryItem(duplicatedItem);
+    setExpandedItemId(duplicatedItem.id);
+    setFilters({ ...filters, archiveStatus: 'active' });
+  };
+
+  const toggleOpenStatus = (item: InventoryItem): void => {
+    saveBarInventoryItem({
+      ...item,
+      isOpen: !item.isOpen,
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
+  const toggleVisibility = (item: InventoryItem): void => {
+    const currentVisibility = item.visibility ?? 'private';
+    const nextVisibility: InventoryVisibility =
+      currentVisibility === 'private'
+        ? 'shared'
+        : currentVisibility === 'shared'
+          ? 'guest_visible'
+          : 'private';
+
+    saveBarInventoryItem({
+      ...item,
+      updatedAt: new Date().toISOString(),
+      visibility: nextVisibility,
+    });
+  };
+
+  const emptyStateKind = useMemo((): EmptyStateKind => {
+    if (inventoryItems.length === 0) {
+      return 'noInventory';
+    }
+
+    if (filters.archiveStatus === 'archived') {
+      return 'noArchivedItems';
+    }
+
+    return 'noSearchResults';
+  }, [filters.archiveStatus, inventoryItems.length]);
+
   const renderItem = ({ item }: ListRenderItemInfo<InventoryItem>): React.JSX.Element => {
     if (filters.viewMode === 'display') {
       return (
         <BarDisplayCard
           item={item}
           onArchive={archiveItem}
+          onDuplicate={duplicateItem}
           onEdit={openEditItem}
-          onRemove={removeItem}
+          onRemove={confirmRemoveItem}
           onRestore={restoreItem}
+          onToggleOpen={toggleOpenStatus}
+          onToggleVisibility={toggleVisibility}
         />
       );
     }
@@ -294,11 +366,14 @@ function BarScreen(): React.JSX.Element {
     return (
       <BarAccordionRow
         onArchive={archiveItem}
+        onDuplicate={duplicateItem}
         onEdit={openEditItem}
         isExpanded={item.id === expandedItemId}
         item={item}
-        onRemove={removeItem}
+        onRemove={confirmRemoveItem}
         onRestore={restoreItem}
+        onToggleOpen={toggleOpenStatus}
+        onToggleVisibility={toggleVisibility}
         onPress={(): void => {
           setExpandedItemId((currentItemId: string | null): string | null => {
             return currentItemId === item.id ? null : item.id;
@@ -318,7 +393,7 @@ function BarScreen(): React.JSX.Element {
       keyExtractor={(item: InventoryItem): string => {
         return item.id;
       }}
-      ListEmptyComponent={<EmptyState />}
+      ListEmptyComponent={<EmptyState kind={emptyStateKind} />}
       ListHeaderComponent={
         <BarControls
           filters={filters}
@@ -759,20 +834,26 @@ type BarAccordionRowProps = {
   isExpanded: boolean;
   item: InventoryItem;
   onArchive: (itemId: string) => void;
+  onDuplicate: (item: InventoryItem) => void;
   onEdit: (item: InventoryItem) => void;
   onPress: () => void;
-  onRemove: (itemId: string) => void;
+  onRemove: (item: InventoryItem) => void;
   onRestore: (itemId: string) => void;
+  onToggleOpen: (item: InventoryItem) => void;
+  onToggleVisibility: (item: InventoryItem) => void;
 };
 
 function BarAccordionRow({
   isExpanded,
   item,
   onArchive,
+  onDuplicate,
   onEdit,
   onPress,
   onRemove,
   onRestore,
+  onToggleOpen,
+  onToggleVisibility,
 }: BarAccordionRowProps): React.JSX.Element {
   return (
     <View style={styles.accordionCard}>
@@ -788,8 +869,17 @@ function BarAccordionRow({
         <View style={styles.summaryText}>
           <Text style={styles.itemName}>{item.name}</Text>
           <Text style={styles.itemType}>
-            {item.productType ?? formatFilterLabel(item.category)}
+            {[item.brand, item.productType ?? formatFilterLabel(item.category)]
+              .filter(Boolean)
+              .join(' · ')}
           </Text>
+          <View style={styles.summaryBadges}>
+            <Text style={styles.summaryBadge}>
+              {formatFilterLabel(item.visibility ?? 'private')}
+            </Text>
+            {item.isArchived ? <Text style={styles.summaryBadge}>Archived</Text> : null}
+            {item.isOpen ? <Text style={styles.summaryBadge}>Open</Text> : null}
+          </View>
         </View>
         <Text style={styles.ratingText}>{formatRating(item.rating)}</Text>
       </Pressable>
@@ -798,9 +888,12 @@ function BarAccordionRow({
         <ProductDetails
           item={item}
           onArchive={onArchive}
+          onDuplicate={onDuplicate}
           onEdit={onEdit}
           onRemove={onRemove}
           onRestore={onRestore}
+          onToggleOpen={onToggleOpen}
+          onToggleVisibility={onToggleVisibility}
         />
       ) : null}
     </View>
@@ -813,17 +906,23 @@ type ProductCardProps = {
 
 type ProductActionsProps = ProductCardProps & {
   onArchive?: (itemId: string) => void;
+  onDuplicate: (item: InventoryItem) => void;
   onEdit: (item: InventoryItem) => void;
-  onRemove?: (itemId: string) => void;
+  onRemove?: (item: InventoryItem) => void;
   onRestore?: (itemId: string) => void;
+  onToggleOpen: (item: InventoryItem) => void;
+  onToggleVisibility: (item: InventoryItem) => void;
 };
 
 function BarDisplayCard({
   item,
   onArchive,
+  onDuplicate,
   onEdit,
   onRemove,
   onRestore,
+  onToggleOpen,
+  onToggleVisibility,
 }: ProductActionsProps): React.JSX.Element {
   return (
     <View style={styles.displayCard}>
@@ -832,10 +931,19 @@ function BarDisplayCard({
         <Text style={styles.displayRating}>{formatRating(item.rating)}</Text>
       </View>
       <Text style={styles.displayName}>{item.name}</Text>
-      <Text style={styles.itemType}>{item.productType ?? formatFilterLabel(item.category)}</Text>
+      <Text style={styles.itemType}>
+        {[item.brand, item.productType ?? formatFilterLabel(item.category)]
+          .filter(Boolean)
+          .join(' · ')}
+      </Text>
       <Text style={styles.displayQuantity}>
         {item.quantity} {item.unit}
       </Text>
+      <View style={styles.summaryBadges}>
+        <Text style={styles.summaryBadge}>{formatFilterLabel(item.visibility ?? 'private')}</Text>
+        {item.isArchived ? <Text style={styles.summaryBadge}>Archived</Text> : null}
+        {item.isOpen ? <Text style={styles.summaryBadge}>Open</Text> : null}
+      </View>
       <Pressable
         accessibilityRole="button"
         onPress={(): void => {
@@ -846,6 +954,43 @@ function BarDisplayCard({
         }}
       >
         <Text style={styles.secondaryButtonText}>Edit</Text>
+      </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        onPress={(): void => {
+          onDuplicate(item);
+        }}
+        style={({ pressed }): StyleProp<ViewStyle> => {
+          return [styles.secondaryButton, pressed ? styles.controlPressed : null];
+        }}
+      >
+        <Text style={styles.secondaryButtonText}>Duplicate</Text>
+      </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        onPress={(): void => {
+          onToggleOpen(item);
+        }}
+        style={({ pressed }): StyleProp<ViewStyle> => {
+          return [styles.secondaryButton, pressed ? styles.controlPressed : null];
+        }}
+      >
+        <Text style={styles.secondaryButtonText}>
+          {item.isOpen ? 'Mark Unopened' : 'Mark Open'}
+        </Text>
+      </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        onPress={(): void => {
+          onToggleVisibility(item);
+        }}
+        style={({ pressed }): StyleProp<ViewStyle> => {
+          return [styles.secondaryButton, pressed ? styles.controlPressed : null];
+        }}
+      >
+        <Text style={styles.secondaryButtonText}>
+          Visibility: {formatFilterLabel(item.visibility ?? 'private')}
+        </Text>
       </Pressable>
       {item.isArchived ? (
         <Pressable
@@ -875,7 +1020,7 @@ function BarDisplayCard({
       <Pressable
         accessibilityRole="button"
         onPress={(): void => {
-          onRemove?.(item.id);
+          onRemove?.(item);
         }}
         style={({ pressed }): StyleProp<ViewStyle> => {
           return [styles.dangerButton, pressed ? styles.controlPressed : null];
@@ -890,9 +1035,12 @@ function BarDisplayCard({
 function ProductDetails({
   item,
   onArchive,
+  onDuplicate,
   onEdit,
   onRemove,
   onRestore,
+  onToggleOpen,
+  onToggleVisibility,
 }: ProductActionsProps): React.JSX.Element {
   return (
     <View style={styles.details}>
@@ -935,6 +1083,43 @@ function ProductDetails({
         >
           <Text style={styles.secondaryButtonText}>Edit</Text>
         </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          onPress={(): void => {
+            onDuplicate(item);
+          }}
+          style={({ pressed }): StyleProp<ViewStyle> => {
+            return [styles.secondaryButton, pressed ? styles.controlPressed : null];
+          }}
+        >
+          <Text style={styles.secondaryButtonText}>Duplicate</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          onPress={(): void => {
+            onToggleOpen(item);
+          }}
+          style={({ pressed }): StyleProp<ViewStyle> => {
+            return [styles.secondaryButton, pressed ? styles.controlPressed : null];
+          }}
+        >
+          <Text style={styles.secondaryButtonText}>
+            {item.isOpen ? 'Mark Unopened' : 'Mark Open'}
+          </Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          onPress={(): void => {
+            onToggleVisibility(item);
+          }}
+          style={({ pressed }): StyleProp<ViewStyle> => {
+            return [styles.secondaryButton, pressed ? styles.controlPressed : null];
+          }}
+        >
+          <Text style={styles.secondaryButtonText}>
+            Visibility: {formatFilterLabel(item.visibility ?? 'private')}
+          </Text>
+        </Pressable>
         {item.isArchived ? (
           <Pressable
             accessibilityRole="button"
@@ -963,7 +1148,7 @@ function ProductDetails({
         <Pressable
           accessibilityRole="button"
           onPress={(): void => {
-            onRemove?.(item.id);
+            onRemove?.(item);
           }}
           style={({ pressed }): StyleProp<ViewStyle> => {
             return [styles.dangerButton, pressed ? styles.controlPressed : null];
@@ -1596,13 +1781,36 @@ function FormOption({
   );
 }
 
-function EmptyState(): React.JSX.Element {
+function EmptyState({ kind }: { kind: EmptyStateKind }): React.JSX.Element {
+  const copy = getEmptyStateCopy(kind);
+
   return (
     <View style={styles.emptyState}>
-      <Text style={styles.emptyTitle}>No bar items yet</Text>
-      <Text style={styles.emptyCopy}>Add an item from the catalog or create a custom item.</Text>
+      <Text style={styles.emptyTitle}>{copy.title}</Text>
+      <Text style={styles.emptyCopy}>{copy.body}</Text>
     </View>
   );
+}
+
+function getEmptyStateCopy(kind: EmptyStateKind): { body: string; title: string } {
+  if (kind === 'noArchivedItems') {
+    return {
+      body: 'Archived items will appear here after you archive something from your bar.',
+      title: 'No archived items',
+    };
+  }
+
+  if (kind === 'noSearchResults') {
+    return {
+      body: 'Try clearing filters, changing the search text, or adding the item as a custom entry.',
+      title: 'No matching items',
+    };
+  }
+
+  return {
+    body: 'Tap Add to choose an item from the catalog or create a custom item.',
+    title: 'No bar items yet',
+  };
 }
 
 function createFormFromItem(item: InventoryItem): ItemFormState {
@@ -2390,6 +2598,22 @@ const styles = StyleSheet.create({
   },
   statusOut: {
     backgroundColor: colors.danger,
+  },
+  summaryBadge: {
+    borderColor: colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    color: colors.textSecondary,
+    fontSize: 11,
+    fontWeight: '800',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  summaryBadges: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 5,
+    marginTop: 7,
   },
   summaryText: {
     flex: 1,
