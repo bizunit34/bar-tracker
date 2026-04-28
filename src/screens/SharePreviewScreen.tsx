@@ -1,9 +1,23 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
+import {
+  Pressable,
+  ScrollView,
+  Share,
+  StyleProp,
+  StyleSheet,
+  Text,
+  View,
+  ViewStyle,
+} from 'react-native';
 
 import { useBarInventoryItems } from '../data/barInventoryStore';
 import { useBarShareSettings } from '../data/barShareSettingsStore';
 import { mapInventoryToGuestVisibleItems } from '../data/guestInventoryMapping';
+import {
+  createShareLink,
+  CreateShareLinkResult,
+  disableShareLink,
+} from '../services/shareLinkService';
 import { colors } from '../theme/colors';
 import { GuestVisibleBarItem, InventoryCategory } from '../types/inventory';
 
@@ -29,6 +43,10 @@ function SharePreviewScreen({ onManageSharing }: SharePreviewScreenProps): React
     });
   }, [guestItems]);
   const [selectedCategory, setSelectedCategory] = useState<InventoryCategory | 'all'>('all');
+  const [shareLink, setShareLink] = useState<CreateShareLinkResult | null>(null);
+  const [shareLinkError, setShareLinkError] = useState<string | null>(null);
+  const [isCreatingShareLink, setIsCreatingShareLink] = useState<boolean>(false);
+  const [isDisablingShareLink, setIsDisablingShareLink] = useState<boolean>(false);
   const visibleItems = useMemo((): Array<GuestVisibleBarItem> => {
     return guestItems.filter((item: GuestVisibleBarItem): boolean => {
       return selectedCategory === 'all' || item.category === selectedCategory;
@@ -45,6 +63,72 @@ function SharePreviewScreen({ onManageSharing }: SharePreviewScreenProps): React
       return formatLabel(left[0]).localeCompare(formatLabel(right[0]));
     });
   }, [visibleItems]);
+
+  const createPublicShareLink = async (): Promise<void> => {
+    const title = shareSettings.title.trim();
+
+    if (!title) {
+      setShareLinkError('Add a share title before creating a link.');
+
+      return;
+    }
+
+    if (guestItems.length === 0) {
+      setShareLinkError('Add at least one guest-visible item before creating a link.');
+
+      return;
+    }
+
+    setIsCreatingShareLink(true);
+    setShareLinkError(null);
+
+    try {
+      const result = await createShareLink({
+        description: shareSettings.description?.trim() || null,
+        items: guestItems,
+        title,
+      });
+
+      setShareLink(result);
+    } catch (error) {
+      setShareLinkError(
+        error instanceof Error ? error.message : 'Could not create the share link.',
+      );
+    } finally {
+      setIsCreatingShareLink(false);
+    }
+  };
+
+  const sharePublicLink = async (): Promise<void> => {
+    if (!shareLink) {
+      return;
+    }
+
+    await Share.share({
+      message: shareLink.shareUrl,
+      url: shareLink.shareUrl,
+    });
+  };
+
+  const disablePublicShareLink = async (): Promise<void> => {
+    if (!shareLink) {
+      return;
+    }
+
+    setIsDisablingShareLink(true);
+    setShareLinkError(null);
+
+    try {
+      await disableShareLink(shareLink.snapshot.slug);
+      setShareLink(null);
+    } catch (error) {
+      setShareLinkError(
+        error instanceof Error ? error.message : 'Could not disable the share link.',
+      );
+    } finally {
+      setIsDisablingShareLink(false);
+    }
+  };
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -66,6 +150,85 @@ function SharePreviewScreen({ onManageSharing }: SharePreviewScreenProps): React
         </Pressable>
       </View>
       <Text style={styles.pageSubtitle}>Local preview only. This is not a live public link.</Text>
+
+      <View style={styles.linkPanel}>
+        <View style={styles.linkPanelCopy}>
+          <Text style={styles.linkPanelTitle}>Public share link</Text>
+          <Text style={styles.pageSubtitle}>
+            Creates a guest-safe link from this sanitized preview only.
+          </Text>
+        </View>
+        {shareLink ? (
+          <View style={styles.linkResult}>
+            <Text selectable style={styles.linkText}>
+              {shareLink.shareUrl}
+            </Text>
+            <View style={styles.linkActions}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={(): void => {
+                  sharePublicLink().catch((error: unknown): void => {
+                    setShareLinkError(
+                      error instanceof Error ? error.message : 'Could not share the link.',
+                    );
+                  });
+                }}
+                style={({ pressed }): StyleProp<ViewStyle> => {
+                  return [styles.secondaryButton, pressed ? styles.controlPressed : null];
+                }}
+              >
+                <Text style={styles.secondaryButtonText}>Share</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                disabled={isDisablingShareLink}
+                onPress={(): void => {
+                  disablePublicShareLink().catch((error: unknown): void => {
+                    setShareLinkError(
+                      error instanceof Error ? error.message : 'Could not disable the share link.',
+                    );
+                  });
+                }}
+                style={({ pressed }): StyleProp<ViewStyle> => {
+                  return [
+                    styles.dangerButton,
+                    pressed ? styles.controlPressed : null,
+                    isDisablingShareLink ? styles.disabledButton : null,
+                  ];
+                }}
+              >
+                <Text style={styles.dangerButtonText}>
+                  {isDisablingShareLink ? 'Disabling...' : 'Disable'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : (
+          <Pressable
+            accessibilityRole="button"
+            disabled={isCreatingShareLink || guestItems.length === 0}
+            onPress={(): void => {
+              createPublicShareLink().catch((error: unknown): void => {
+                setShareLinkError(
+                  error instanceof Error ? error.message : 'Could not create the share link.',
+                );
+              });
+            }}
+            style={({ pressed }): StyleProp<ViewStyle> => {
+              return [
+                styles.primaryButton,
+                pressed ? styles.controlPressed : null,
+                isCreatingShareLink || guestItems.length === 0 ? styles.disabledButton : null,
+              ];
+            }}
+          >
+            <Text style={styles.primaryButtonText}>
+              {isCreatingShareLink ? 'Creating...' : 'Create Share Link'}
+            </Text>
+          </Pressable>
+        )}
+        {shareLinkError ? <Text style={styles.errorText}>{shareLinkError}</Text> : null}
+      </View>
 
       {guestItems.length > 0 ? (
         <View style={styles.filterRow}>
@@ -200,6 +363,24 @@ const styles = StyleSheet.create({
   controlPressed: {
     opacity: 0.75,
   },
+  dangerButton: {
+    alignItems: 'center',
+    borderColor: colors.dangerBorder,
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 40,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  dangerButtonText: {
+    color: colors.dangerText,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  disabledButton: {
+    opacity: 0.55,
+  },
   emptyCopy: {
     color: colors.textSecondary,
     fontSize: 14,
@@ -217,6 +398,12 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: 18,
     fontWeight: '800',
+  },
+  errorText: {
+    color: colors.dangerText,
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 18,
   },
   filterRow: {
     flexDirection: 'row',
@@ -261,6 +448,36 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
+  linkActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  linkPanel: {
+    backgroundColor: colors.card,
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 12,
+    padding: 14,
+  },
+  linkPanelCopy: {
+    gap: 4,
+  },
+  linkPanelTitle: {
+    color: colors.textPrimary,
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  linkResult: {
+    gap: 10,
+  },
+  linkText: {
+    color: colors.accent,
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 19,
+  },
   manageButton: {
     borderColor: colors.border,
     borderRadius: 8,
@@ -281,6 +498,35 @@ const styles = StyleSheet.create({
   pageTitle: {
     color: colors.textPrimary,
     fontSize: 28,
+    fontWeight: '800',
+  },
+  primaryButton: {
+    alignItems: 'center',
+    backgroundColor: colors.accent,
+    borderRadius: 8,
+    justifyContent: 'center',
+    minHeight: 44,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  primaryButtonText: {
+    color: colors.background,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  secondaryButton: {
+    alignItems: 'center',
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 40,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  secondaryButtonText: {
+    color: colors.textPrimary,
+    fontSize: 13,
     fontWeight: '800',
   },
 });

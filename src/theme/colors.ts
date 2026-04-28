@@ -5,6 +5,8 @@ export const colors = {
   accent: '#22d3ee',
   accentMuted: '#0ea5e9',
   danger: '#ef4444',
+  dangerBorder: '#b91c1c',
+  dangerText: '#fca5a5',
   textPrimary: '#e2e8f0',
   textSecondary: '#94a3b8',
   success: '#22c55e',

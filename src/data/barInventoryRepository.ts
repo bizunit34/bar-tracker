@@ -13,10 +13,10 @@ type InventoryRow = SQLiteItem & {
   visibility: string;
 };
 
-function sqlValue<T extends string | number | boolean | null | undefined>(
-  value: T,
-): Exclude<T, null> | undefined {
-  return value === null ? undefined : (value as Exclude<T, null>);
+function nullableSqlValue(
+  value: string | number | boolean | null | undefined,
+): string | number | boolean {
+  return value ?? '';
 }
 
 export type InventoryItemInput = Omit<InventoryItem, 'createdAt' | 'updatedAt'> & {
@@ -112,7 +112,7 @@ async function upsertItem(item: InventoryItem): Promise<void> {
       created_at,
       updated_at,
       archived_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, NULLIF(?, ''))
     ON CONFLICT(id) DO UPDATE SET
       item_json = excluded.item_json,
       is_archived = excluded.is_archived,
@@ -126,7 +126,7 @@ async function upsertItem(item: InventoryItem): Promise<void> {
       item.visibility ?? 'private',
       item.createdAt ?? new Date().toISOString(),
       item.updatedAt ?? new Date().toISOString(),
-      sqlValue(item.archivedAt ?? null),
+      nullableSqlValue(item.archivedAt),
     ],
   );
 }

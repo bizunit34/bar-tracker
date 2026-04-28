@@ -80,8 +80,8 @@ function mapRowToRecipe(row: RecipeRow): Recipe | null {
   };
 }
 
-function sqlValue<T extends SQLiteValue | null>(value: T): Exclude<T, null> | undefined {
-  return value === null ? undefined : (value as Exclude<T, null>);
+function nullableSqlValue(value: SQLiteValue | null): SQLiteValue {
+  return value ?? '';
 }
 
 function recipeToParams(recipe: Recipe): Array<SQLiteValue> {
@@ -89,15 +89,15 @@ function recipeToParams(recipe: Recipe): Array<SQLiteValue> {
     recipe.id,
     recipe.name,
     recipe.source,
-    sqlValue(recipe.description ?? null),
+    nullableSqlValue(recipe.description),
     JSON.stringify(recipe.ingredients),
     JSON.stringify(recipe.steps),
     JSON.stringify(recipe.tools ?? []),
-    sqlValue(recipe.glassware ?? null),
-    sqlValue(recipe.garnish ?? null),
+    nullableSqlValue(recipe.glassware),
+    nullableSqlValue(recipe.garnish),
     JSON.stringify(recipe.tags ?? []),
     recipe.isFavorite ? 1 : 0,
-    sqlValue(recipe.rating ?? null),
+    nullableSqlValue(recipe.rating),
     recipe.visibility ?? 'private',
     recipe.createdAt,
     recipe.updatedAt,
@@ -160,7 +160,7 @@ export async function saveRecipe(recipe: Recipe): Promise<Recipe> {
       visibility,
       created_at,
       updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, NULLIF(?, ''), ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), ?, ?, NULLIF(?, ''), ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       name = excluded.name,
       source = excluded.source,
