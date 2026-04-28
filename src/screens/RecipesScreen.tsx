@@ -404,7 +404,8 @@ function RecipesHome({
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.pageTitle}>Recipes</Text>
       <Text style={styles.pageSubtitle}>
-        Generate cocktail ideas from what is already in your bar.
+        Saved drinks and optional recommendations live here. Recipes work best after your bar,
+        tools, and glassware are set up.
       </Text>
       <Text style={styles.helperText}>{inventoryCount} bar item(s) available for matching.</Text>
       {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}

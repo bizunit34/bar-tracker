@@ -109,6 +109,10 @@ function InventoryTransferScreen(): React.JSX.Element {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Export Inventory</Text>
         <Text style={styles.helperText}>{exportSummary}</Text>
+        <Text style={styles.helperText}>
+          JSON is best for restoring Bar Tracker data. CSV is best for spreadsheet review or
+          cleanup.
+        </Text>
         <View style={styles.actionRow}>
           <Pressable
             accessibilityRole="button"
@@ -121,7 +125,7 @@ function InventoryTransferScreen(): React.JSX.Element {
               return [styles.primaryButton, pressed ? styles.controlPressed : null];
             }}
           >
-            <Text style={styles.primaryButtonText}>Export JSON</Text>
+            <Text style={styles.primaryButtonText}>Export JSON Backup</Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"
@@ -134,7 +138,7 @@ function InventoryTransferScreen(): React.JSX.Element {
               return [styles.secondaryButton, pressed ? styles.controlPressed : null];
             }}
           >
-            <Text style={styles.secondaryButtonText}>Export CSV</Text>
+            <Text style={styles.secondaryButtonText}>Export CSV Spreadsheet</Text>
           </Pressable>
         </View>
         <Text style={styles.todoText}>
@@ -146,6 +150,10 @@ function InventoryTransferScreen(): React.JSX.Element {
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Import Inventory</Text>
+        <Text style={styles.helperText}>
+          Paste JSON or CSV, preview the parsed rows, then confirm import. Duplicates are skipped by
+          default to avoid repeated full-library imports.
+        </Text>
         <View style={styles.actionRow}>
           <FormatChip
             isSelected={importFormat === 'json'}

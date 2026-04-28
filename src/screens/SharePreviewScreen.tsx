@@ -1,3 +1,4 @@
+import Clipboard from '@react-native-clipboard/clipboard';
 import React, { useMemo, useState } from 'react';
 import {
   Linking,
@@ -14,7 +15,7 @@ import {
 import { useBarInventoryItems } from '../data/barInventoryStore';
 import { useBarShareSettings } from '../data/barShareSettingsStore';
 import { mapInventoryToGuestVisibleItems } from '../data/guestInventoryMapping';
-import { saveLocalShareLinkRecord } from '../data/localShareLinkStore';
+import { saveLocalShareLinkRecord, useLocalShareLinks } from '../data/localShareLinkStore';
 import {
   createShareLink,
   CreateShareLinkResult,
@@ -24,12 +25,19 @@ import { colors } from '../theme/colors';
 import { GuestVisibleBarItem, InventoryCategory } from '../types/inventory';
 
 type SharePreviewScreenProps = {
+  onManageLinks: () => void;
   onManageSharing: () => void;
+  onOpenBar: () => void;
 };
 
-function SharePreviewScreen({ onManageSharing }: SharePreviewScreenProps): React.JSX.Element {
+function SharePreviewScreen({
+  onManageLinks,
+  onManageSharing,
+  onOpenBar,
+}: SharePreviewScreenProps): React.JSX.Element {
   const inventoryItems = useBarInventoryItems();
   const shareSettings = useBarShareSettings();
+  const shareLinks = useLocalShareLinks();
   const guestItems = useMemo((): Array<GuestVisibleBarItem> => {
     return mapInventoryToGuestVisibleItems(inventoryItems, shareSettings);
   }, [inventoryItems, shareSettings]);
@@ -47,6 +55,7 @@ function SharePreviewScreen({ onManageSharing }: SharePreviewScreenProps): React
   const [selectedCategory, setSelectedCategory] = useState<InventoryCategory | 'all'>('all');
   const [shareLink, setShareLink] = useState<CreateShareLinkResult | null>(null);
   const [shareLinkError, setShareLinkError] = useState<string | null>(null);
+  const [copyMessage, setCopyMessage] = useState<string | null>(null);
   const [isCreatingShareLink, setIsCreatingShareLink] = useState<boolean>(false);
   const [isDisablingShareLink, setIsDisablingShareLink] = useState<boolean>(false);
   const visibleItems = useMemo((): Array<GuestVisibleBarItem> => {
@@ -65,6 +74,17 @@ function SharePreviewScreen({ onManageSharing }: SharePreviewScreenProps): React
       return formatLabel(left[0]).localeCompare(formatLabel(right[0]));
     });
   }, [visibleItems]);
+  const latestShareLink = useMemo(() => {
+    return (
+      shareLinks
+        .filter((link) => {
+          return !link.disabledAt;
+        })
+        .sort((left, right): number => {
+          return Date.parse(right.updatedAt) - Date.parse(left.updatedAt);
+        })[0] ?? null
+    );
+  }, [shareLinks]);
 
   const createPublicShareLink = async (): Promise<void> => {
     const title = shareSettings.title.trim();
@@ -92,6 +112,7 @@ function SharePreviewScreen({ onManageSharing }: SharePreviewScreenProps): React
       });
 
       setShareLink(result);
+      setCopyMessage(null);
       saveLocalShareLinkRecord({
         createdAt: result.snapshot.createdAt,
         description: result.snapshot.description ?? null,
@@ -110,6 +131,17 @@ function SharePreviewScreen({ onManageSharing }: SharePreviewScreenProps): React
     } finally {
       setIsCreatingShareLink(false);
     }
+  };
+
+  const copyLatestLink = (): void => {
+    const url = shareLink?.shareUrl ?? latestShareLink?.shareUrl;
+
+    if (!url) {
+      return;
+    }
+
+    Clipboard.setString(url);
+    setCopyMessage('Link copied.');
   };
 
   const sharePublicLink = async (): Promise<void> => {
@@ -172,11 +204,20 @@ function SharePreviewScreen({ onManageSharing }: SharePreviewScreenProps): React
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.headerRow}>
         <View style={styles.headerCopy}>
-          <Text style={styles.pageTitle}>{shareSettings.title}</Text>
+          <Text style={styles.pageTitle}>Share</Text>
           {shareSettings.description ? (
             <Text style={styles.pageSubtitle}>{shareSettings.description}</Text>
           ) : null}
         </View>
+        <Pressable
+          accessibilityRole="button"
+          onPress={onManageLinks}
+          style={({ pressed }): StyleProp<ViewStyle> => {
+            return [styles.manageButton, pressed ? styles.controlPressed : null];
+          }}
+        >
+          <Text style={styles.manageButtonText}>Links</Text>
+        </Pressable>
         <Pressable
           accessibilityRole="button"
           onPress={onManageSharing}
@@ -187,7 +228,45 @@ function SharePreviewScreen({ onManageSharing }: SharePreviewScreenProps): React
           <Text style={styles.manageButtonText}>Manage</Text>
         </Pressable>
       </View>
-      <Text style={styles.pageSubtitle}>Local preview only. This is not a live public link.</Text>
+      <View style={styles.hubPanel}>
+        <Text style={styles.linkPanelTitle}>{shareSettings.title}</Text>
+        <Text style={styles.pageSubtitle}>
+          {guestItems.length} guest-visible item(s) · {shareSettings.includedCategories.length}{' '}
+          included categor{shareSettings.includedCategories.length === 1 ? 'y' : 'ies'}
+        </Text>
+        <View style={styles.linkActions}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={onManageSharing}
+            style={({ pressed }): StyleProp<ViewStyle> => {
+              return [styles.secondaryButton, pressed ? styles.controlPressed : null];
+            }}
+          >
+            <Text style={styles.secondaryButtonText}>Manage Sharing</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            onPress={onManageLinks}
+            style={({ pressed }): StyleProp<ViewStyle> => {
+              return [styles.secondaryButton, pressed ? styles.controlPressed : null];
+            }}
+          >
+            <Text style={styles.secondaryButtonText}>Manage Links</Text>
+          </Pressable>
+          {latestShareLink || shareLink ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={copyLatestLink}
+              style={({ pressed }): StyleProp<ViewStyle> => {
+                return [styles.secondaryButton, pressed ? styles.controlPressed : null];
+              }}
+            >
+              <Text style={styles.secondaryButtonText}>Copy Link</Text>
+            </Pressable>
+          ) : null}
+        </View>
+        {copyMessage ? <Text style={styles.successText}>{copyMessage}</Text> : null}
+      </View>
 
       <View style={styles.linkPanel}>
         <View style={styles.linkPanelCopy}>
@@ -314,6 +393,26 @@ function SharePreviewScreen({ onManageSharing }: SharePreviewScreenProps): React
             Use Manage Sharing to select categories and make sure items are marked shared or
             guest-visible.
           </Text>
+          <View style={styles.linkActions}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={onOpenBar}
+              style={({ pressed }): StyleProp<ViewStyle> => {
+                return [styles.secondaryButton, pressed ? styles.controlPressed : null];
+              }}
+            >
+              <Text style={styles.secondaryButtonText}>Go to Bar</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              onPress={onManageSharing}
+              style={({ pressed }): StyleProp<ViewStyle> => {
+                return [styles.secondaryButton, pressed ? styles.controlPressed : null];
+              }}
+            >
+              <Text style={styles.secondaryButtonText}>Manage Sharing</Text>
+            </Pressable>
+          </View>
         </View>
       ) : (
         groupedItems.map(([category, items]): React.JSX.Element => {
@@ -473,6 +572,14 @@ const styles = StyleSheet.create({
     gap: 12,
     justifyContent: 'space-between',
   },
+  hubPanel: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 10,
+    padding: 14,
+  },
   itemCard: {
     backgroundColor: colors.card,
     borderColor: colors.border,
@@ -579,6 +686,11 @@ const styles = StyleSheet.create({
   },
   secondaryButtonText: {
     color: colors.textPrimary,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  successText: {
+    color: colors.success,
     fontSize: 13,
     fontWeight: '800',
   },

@@ -116,6 +116,9 @@ function EquipmentScreen(): React.JSX.Element {
         <Text style={styles.subtitle}>
           Track the equipment your bar can use without filling inventory until you mark it owned.
         </Text>
+        <Text style={styles.subtitle}>
+          Tools and glassware help future recipe suggestions and guest planning.
+        </Text>
       </View>
 
       <View style={styles.segmentedControl}>

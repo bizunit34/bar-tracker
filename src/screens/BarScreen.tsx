@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -17,6 +17,11 @@ import {
 import { Asset, launchCamera, launchImageLibrary } from 'react-native-image-picker';
 
 import { catalogInventoryItems } from '../catalog/catalogInventory';
+import BarItemActionSheet from '../components/bar/BarItemActionSheet';
+import BarItemCard from '../components/bar/BarItemCard';
+import BarItemRow from '../components/bar/BarItemRow';
+import EmptyInventoryState from '../components/bar/EmptyInventoryState';
+import Icon from '../components/bar/Icon';
 import {
   archiveBarInventoryItem,
   removeBarInventoryItem,
@@ -24,7 +29,7 @@ import {
   saveBarInventoryItem,
   useBarInventoryItems,
 } from '../data/barInventoryStore';
-import { colors } from '../theme/colors';
+import { colors, componentTokens, radii, shadows, spacing, typography } from '../theme';
 import {
   InventoryCategory,
   InventoryHolding,
@@ -154,14 +159,79 @@ const emptyItemForm: ItemFormState = {
   visibility: 'private',
 };
 
-function BarScreen(): React.JSX.Element {
+type BarScreenProps = {
+  editItemId?: string | null;
+  editItemRequest?: number;
+  initialCategory?: string | null;
+  onManageEquipment?: () => void;
+  onOpenImportExport?: () => void;
+  openAddRequest?: number;
+};
+
+function BarScreen({
+  editItemId = null,
+  editItemRequest = 0,
+  initialCategory = null,
+  onManageEquipment,
+  onOpenImportExport,
+  openAddRequest = 0,
+}: BarScreenProps): React.JSX.Element {
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
   const [filters, setFilters] = useState<BarFilterState>(initialFilters);
   const inventoryItems = useBarInventoryItems();
   const [editorMode, setEditorMode] = useState<EditorMode>('add');
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [form, setForm] = useState<ItemFormState>(emptyItemForm);
+  const [actionSheetItem, setActionSheetItem] = useState<InventoryItem | null>(null);
+  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
   const [isEditorOpen, setIsEditorOpen] = useState<boolean>(false);
+  const [lastHandledEditRequest, setLastHandledEditRequest] = useState<number>(0);
+
+  useEffect((): void => {
+    if (!initialCategory) {
+      return;
+    }
+
+    setFilters((currentFilters: BarFilterState): BarFilterState => {
+      return {
+        ...currentFilters,
+        archiveStatus: 'active',
+        categories: [initialCategory as InventoryCategory],
+      };
+    });
+  }, [initialCategory]);
+
+  useEffect((): void => {
+    if (openAddRequest <= 0) {
+      return;
+    }
+
+    setEditorMode('add');
+    setEditingItemId(null);
+    setForm(emptyItemForm);
+    setIsEditorOpen(true);
+  }, [openAddRequest]);
+
+  useEffect((): void => {
+    if (!editItemId || editItemRequest <= 0 || editItemRequest <= lastHandledEditRequest) {
+      return;
+    }
+
+    const itemToEdit = inventoryItems.find((item: InventoryItem): boolean => {
+      return item.id === editItemId;
+    });
+
+    if (!itemToEdit) {
+      return;
+    }
+
+    setLastHandledEditRequest(editItemRequest);
+    setEditorMode('edit');
+    setEditingItemId(itemToEdit.id);
+    setExpandedItemId(itemToEdit.id);
+    setForm(createFormFromItem(itemToEdit));
+    setIsEditorOpen(true);
+  }, [editItemId, editItemRequest, inventoryItems, lastHandledEditRequest]);
 
   const productTypes = useMemo((): Array<string> => {
     return Array.from(
@@ -232,6 +302,14 @@ function BarScreen(): React.JSX.Element {
       });
   }, [filters, inventoryItems]);
 
+  const showFeedback = (message: string): void => {
+    setFeedbackMessage(message);
+
+    setTimeout((): void => {
+      setFeedbackMessage(null);
+    }, 2400);
+  };
+
   const openAddItem = (): void => {
     setEditorMode('add');
     setEditingItemId(null);
@@ -263,22 +341,26 @@ function BarScreen(): React.JSX.Element {
     saveBarInventoryItem(nextItem);
     setExpandedItemId(nextItem.id);
     setIsEditorOpen(false);
+    showFeedback(modeLabel(editorMode));
   };
 
   const removeItem = (itemId: string): void => {
     removeBarInventoryItem(itemId);
     setExpandedItemId(null);
+    showFeedback('Item deleted.');
   };
 
   const archiveItem = (itemId: string): void => {
     archiveBarInventoryItem(itemId);
     setExpandedItemId(null);
+    showFeedback('Item archived.');
   };
 
   const restoreItem = (itemId: string): void => {
     restoreBarInventoryItem(itemId);
     setExpandedItemId(itemId);
     setFilters({ ...filters, archiveStatus: 'active' });
+    showFeedback('Item restored.');
   };
 
   const confirmRemoveItem = (item: InventoryItem): void => {
@@ -309,6 +391,7 @@ function BarScreen(): React.JSX.Element {
     saveBarInventoryItem(duplicatedItem);
     setExpandedItemId(duplicatedItem.id);
     setFilters({ ...filters, archiveStatus: 'active' });
+    showFeedback('Item duplicated.');
   };
 
   const toggleOpenStatus = (item: InventoryItem): void => {
@@ -317,6 +400,7 @@ function BarScreen(): React.JSX.Element {
       isOpen: !item.isOpen,
       updatedAt: new Date().toISOString(),
     });
+    showFeedback(item.isOpen ? 'Marked unopened.' : 'Marked open.');
   };
 
   const toggleVisibility = (item: InventoryItem): void => {
@@ -333,6 +417,7 @@ function BarScreen(): React.JSX.Element {
       updatedAt: new Date().toISOString(),
       visibility: nextVisibility,
     });
+    showFeedback(`Visibility changed to ${formatFilterLabel(nextVisibility)}.`);
   };
 
   const emptyStateKind = useMemo((): EmptyStateKind => {
@@ -348,33 +433,36 @@ function BarScreen(): React.JSX.Element {
   }, [filters.archiveStatus, inventoryItems.length]);
 
   const renderItem = ({ item }: ListRenderItemInfo<InventoryItem>): React.JSX.Element => {
+    const stockStatus = getStockStatus(item);
+    const primaryAction = (targetItem: InventoryItem): void => {
+      if (targetItem.isArchived) {
+        restoreItem(targetItem.id);
+
+        return;
+      }
+
+      openEditItem(targetItem);
+    };
+
     if (filters.viewMode === 'display') {
       return (
-        <BarDisplayCard
+        <BarItemCard
           item={item}
-          onArchive={archiveItem}
-          onDuplicate={duplicateItem}
-          onEdit={openEditItem}
-          onRemove={confirmRemoveItem}
-          onRestore={restoreItem}
-          onToggleOpen={toggleOpenStatus}
-          onToggleVisibility={toggleVisibility}
+          stockStatus={stockStatus}
+          onOpenActions={setActionSheetItem}
+          onPrimaryAction={primaryAction}
         />
       );
     }
 
     return (
-      <BarAccordionRow
-        onArchive={archiveItem}
-        onDuplicate={duplicateItem}
-        onEdit={openEditItem}
+      <BarItemRow
         isExpanded={item.id === expandedItemId}
         item={item}
-        onRemove={confirmRemoveItem}
-        onRestore={restoreItem}
-        onToggleOpen={toggleOpenStatus}
-        onToggleVisibility={toggleVisibility}
-        onPress={(): void => {
+        stockStatus={stockStatus}
+        onOpenActions={setActionSheetItem}
+        onPrimaryAction={primaryAction}
+        onToggleExpanded={(): void => {
           setExpandedItemId((currentItemId: string | null): string | null => {
             return currentItemId === item.id ? null : item.id;
           });
@@ -393,31 +481,62 @@ function BarScreen(): React.JSX.Element {
       keyExtractor={(item: InventoryItem): string => {
         return item.id;
       }}
-      ListEmptyComponent={<EmptyState kind={emptyStateKind} />}
-      ListHeaderComponent={
-        <BarControls
-          filters={filters}
+      ListEmptyComponent={
+        <EmptyInventoryState
+          kind={emptyStateKind}
           onAddItem={openAddItem}
-          productTypes={productTypes}
-          resultCount={visibleItems.length}
-          onFiltersChange={(nextFilters: BarFilterState): void => {
-            setExpandedItemId(null);
-            setFilters(nextFilters);
+          onResetFilters={(): void => {
+            setFilters(initialFilters);
+          }}
+          onViewActive={(): void => {
+            setFilters({ ...initialFilters, archiveStatus: 'active' });
           }}
         />
+      }
+      ListHeaderComponent={
+        <>
+          <BarControls
+            filters={filters}
+            onAddItem={openAddItem}
+            onManageEquipment={onManageEquipment}
+            onOpenImportExport={onOpenImportExport}
+            productTypes={productTypes}
+            resultCount={visibleItems.length}
+            onFiltersChange={(nextFilters: BarFilterState): void => {
+              setExpandedItemId(null);
+              setFilters(nextFilters);
+            }}
+          />
+          {feedbackMessage ? <Text style={styles.feedbackText}>{feedbackMessage}</Text> : null}
+        </>
       }
       numColumns={filters.viewMode === 'display' ? 2 : 1}
       renderItem={renderItem}
       ListFooterComponent={
-        <ItemEditorModal
-          catalogItems={catalogInventoryItems}
-          form={form}
-          mode={editorMode}
-          visible={isEditorOpen}
-          onChange={setForm}
-          onClose={closeEditor}
-          onSave={saveItem}
-        />
+        <>
+          <ItemEditorModal
+            catalogItems={catalogInventoryItems}
+            form={form}
+            mode={editorMode}
+            visible={isEditorOpen}
+            onChange={setForm}
+            onClose={closeEditor}
+            onSave={saveItem}
+          />
+          <BarItemActionSheet
+            item={actionSheetItem}
+            onArchive={archiveItem}
+            onClose={(): void => {
+              setActionSheetItem(null);
+            }}
+            onDuplicate={duplicateItem}
+            onEdit={openEditItem}
+            onRemove={confirmRemoveItem}
+            onRestore={restoreItem}
+            onToggleOpen={toggleOpenStatus}
+            onToggleVisibility={toggleVisibility}
+          />
+        </>
       }
     />
   );
@@ -427,6 +546,8 @@ type BarControlsProps = {
   filters: BarFilterState;
   onAddItem: () => void;
   onFiltersChange: (filters: BarFilterState) => void;
+  onManageEquipment?: () => void;
+  onOpenImportExport?: () => void;
   productTypes: Array<string>;
   resultCount: number;
 };
@@ -435,12 +556,15 @@ function BarControls({
   filters,
   onAddItem,
   onFiltersChange,
+  onManageEquipment,
+  onOpenImportExport,
   productTypes,
   resultCount,
 }: BarControlsProps): React.JSX.Element {
   const [draftFilters, setDraftFilters] = useState<BarFilterState>(filters);
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState<boolean>(false);
   const [openDropdown, setOpenDropdown] = useState<OpenDropdown>(null);
+  const activeFilterCount = getActiveFilterCount(filters);
 
   const updateFilters = (partialFilters: Partial<BarFilterState>): void => {
     onFiltersChange({ ...filters, ...partialFilters });
@@ -471,6 +595,12 @@ function BarControls({
     setIsFilterMenuOpen(false);
   };
 
+  const clearFilters = (): void => {
+    setDraftFilters(initialFilters);
+    onFiltersChange(initialFilters);
+    setOpenDropdown(null);
+  };
+
   const toggleDropdown = (dropdown: OpenDropdown): void => {
     setOpenDropdown((currentDropdown: OpenDropdown): OpenDropdown => {
       return currentDropdown === dropdown ? null : dropdown;
@@ -485,182 +615,265 @@ function BarControls({
           <Text style={styles.pageSubtitle}>
             {resultCount} {filters.archiveStatus === 'archived' ? 'archived' : 'active'} item(s)
           </Text>
-        </View>
-        <View style={styles.controlRow}>
-          <Pressable
-            accessibilityRole="button"
-            onPress={onAddItem}
-            style={({ pressed }): StyleProp<ViewStyle> => {
-              return [styles.addButton, pressed ? styles.controlPressed : null];
-            }}
-          >
-            <Text style={styles.addButtonText}>Add</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            onPress={toggleFilterMenu}
-            style={({ pressed }): StyleProp<ViewStyle> => {
-              return [
-                styles.filterButton,
-                isFilterMenuOpen ? styles.filterButtonActive : null,
-                pressed ? styles.controlPressed : null,
-              ];
-            }}
-          >
-            <Text
-              style={[
-                styles.filterButtonText,
-                isFilterMenuOpen ? styles.filterButtonTextActive : null,
-              ]}
-            >
-              Filter
-            </Text>
-          </Pressable>
-          <View style={styles.viewToggle}>
-            <SegmentButton
-              isActive={filters.viewMode === 'list'}
-              label="List"
-              onPress={(): void => {
-                updateFilters({ viewMode: 'list' });
-                updateDraftFilters({ viewMode: 'list' });
-              }}
-            />
-            <SegmentButton
-              isActive={filters.viewMode === 'display'}
-              label="Display"
-              onPress={(): void => {
-                updateFilters({ viewMode: 'display' });
-                updateDraftFilters({ viewMode: 'display' });
-              }}
-            />
-          </View>
+          <Text style={styles.visibilityHelper}>
+            Private stays local. Shared and Guest Visible can appear in guest previews when
+            included.
+          </Text>
         </View>
       </View>
 
-      {isFilterMenuOpen ? (
-        <View style={styles.filterPanel}>
+      <View style={styles.searchToolbar}>
+        <View style={styles.searchBox}>
+          <Icon name="search" style={styles.searchIcon} />
           <TextInput
             onChangeText={(query: string): void => {
-              updateDraftFilters({ query });
+              updateFilters({ query });
             }}
             placeholder="Search name or brand"
             placeholderTextColor={colors.textSecondary}
             style={styles.searchInput}
-            value={draftFilters.query}
+            value={filters.query}
           />
-
-          <Text style={styles.formLabel}>Inventory status</Text>
-          <View style={styles.viewToggle}>
-            <SegmentButton
-              isActive={draftFilters.archiveStatus === 'active'}
-              label="Active"
+          {filters.query.length > 0 ? (
+            <Pressable
+              accessibilityLabel="Clear search"
+              accessibilityRole="button"
               onPress={(): void => {
-                updateDraftFilters({ archiveStatus: 'active' });
+                updateFilters({ query: '' });
               }}
-            />
-            <SegmentButton
-              isActive={draftFilters.archiveStatus === 'archived'}
-              label="Archived"
-              onPress={(): void => {
-                updateDraftFilters({ archiveStatus: 'archived' });
+              style={({ pressed }): StyleProp<ViewStyle> => {
+                return [styles.compactIconButton, pressed ? styles.controlPressed : null];
               }}
-            />
-          </View>
+            >
+              <Icon name="close" />
+            </Pressable>
+          ) : null}
+        </View>
+        <Pressable
+          accessibilityLabel="Open filters"
+          accessibilityRole="button"
+          onPress={toggleFilterMenu}
+          style={({ pressed }): StyleProp<ViewStyle> => {
+            return [
+              styles.filterButton,
+              activeFilterCount > 0 ? styles.filterButtonActive : null,
+              pressed ? styles.controlPressed : null,
+            ];
+          }}
+        >
+          <Icon
+            name="filter"
+            style={activeFilterCount > 0 ? styles.filterButtonTextActive : null}
+          />
+        </Pressable>
+        <Pressable
+          accessibilityLabel="Add item"
+          accessibilityRole="button"
+          onPress={onAddItem}
+          style={({ pressed }): StyleProp<ViewStyle> => {
+            return [styles.addButton, pressed ? styles.controlPressed : null];
+          }}
+        >
+          <Icon name="add" />
+        </Pressable>
+      </View>
 
-          <DropdownFilter
-            isOpen={openDropdown === 'type'}
-            label="Type"
-            selectedSummary={formatSelectedSummary(draftFilters.productTypes, 'All types')}
-            onToggle={(): void => {
-              toggleDropdown('type');
-            }}
-          >
-            <MultiSelectOptions
-              options={productTypes}
-              selectedOptions={draftFilters.productTypes}
-              onChange={(selectedOptions: Array<string>): void => {
-                updateDraftFilters({ productTypes: selectedOptions });
-              }}
-            />
-          </DropdownFilter>
-
-          <DropdownFilter
-            isOpen={openDropdown === 'category'}
-            label="Category"
-            selectedSummary={formatSelectedSummary(
-              draftFilters.categories.map((category: InventoryCategory): string => {
-                return formatFilterLabel(category);
-              }),
-              'All categories',
-            )}
-            onToggle={(): void => {
-              toggleDropdown('category');
-            }}
-          >
-            <MultiSelectOptions
-              formatOptionLabel={formatFilterLabel}
-              options={allCategories}
-              selectedOptions={draftFilters.categories}
-              onChange={(selectedOptions: Array<InventoryCategory>): void => {
-                updateDraftFilters({ categories: selectedOptions });
-              }}
-            />
-          </DropdownFilter>
-
-          <DropdownFilter
-            isOpen={openDropdown === 'stock'}
-            label="Stock"
-            selectedSummary={formatSelectedSummary(
-              draftFilters.stockStatuses.map((stockStatus: StockStatus): string => {
-                return formatFilterLabel(stockStatus);
-              }),
-              'All stock',
-            )}
-            onToggle={(): void => {
-              toggleDropdown('stock');
-            }}
-          >
-            <MultiSelectOptions
-              formatOptionLabel={formatFilterLabel}
-              options={stockFilters}
-              selectedOptions={draftFilters.stockStatuses}
-              onChange={(selectedOptions: Array<StockStatus>): void => {
-                updateDraftFilters({ stockStatuses: selectedOptions });
-              }}
-            />
-          </DropdownFilter>
-
-          <DropdownFilter
-            isOpen={openDropdown === 'sort'}
-            label="Sort"
-            selectedSummary={getSortLabel(draftFilters)}
-            onToggle={(): void => {
-              toggleDropdown('sort');
-            }}
-          >
-            <SortOptions
-              filters={draftFilters}
-              onChange={(sortSelection: SortSelection): void => {
-                updateDraftFilters({
-                  sortBy: sortSelection.sortBy,
-                  sortDirection: sortSelection.direction,
-                });
-                setOpenDropdown(null);
-              }}
-            />
-          </DropdownFilter>
-
+      <View style={styles.utilityRow}>
+        {onManageEquipment ? (
           <Pressable
             accessibilityRole="button"
-            onPress={applyDraftFilters}
+            onPress={onManageEquipment}
             style={({ pressed }): StyleProp<ViewStyle> => {
-              return [styles.applyButton, pressed ? styles.controlPressed : null];
+              return [styles.filterButton, pressed ? styles.controlPressed : null];
             }}
           >
-            <Text style={styles.applyButtonText}>Apply</Text>
+            <Text style={styles.filterButtonText}>Tools</Text>
           </Pressable>
+        ) : null}
+        {onOpenImportExport ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={onOpenImportExport}
+            style={({ pressed }): StyleProp<ViewStyle> => {
+              return [styles.filterButton, pressed ? styles.controlPressed : null];
+            }}
+          >
+            <Text style={styles.filterButtonText}>Import</Text>
+          </Pressable>
+        ) : null}
+        <View style={styles.viewToggle}>
+          <SegmentButton
+            isActive={filters.viewMode === 'list'}
+            label="List"
+            onPress={(): void => {
+              updateFilters({ viewMode: 'list' });
+              updateDraftFilters({ viewMode: 'list' });
+            }}
+          />
+          <SegmentButton
+            isActive={filters.viewMode === 'display'}
+            label="Display"
+            onPress={(): void => {
+              updateFilters({ viewMode: 'display' });
+              updateDraftFilters({ viewMode: 'display' });
+            }}
+          />
         </View>
-      ) : null}
+      </View>
+
+      <ActiveFilterChips
+        filters={filters}
+        onChange={(nextFilters: BarFilterState): void => {
+          onFiltersChange(nextFilters);
+          setDraftFilters(nextFilters);
+        }}
+      />
+
+      <Modal
+        animationType="slide"
+        onRequestClose={toggleFilterMenu}
+        transparent
+        visible={isFilterMenuOpen}
+      >
+        <View style={styles.editorBackdrop}>
+          <View style={styles.filterSheet}>
+            <View style={styles.editorHeader}>
+              <Text style={styles.editorTitle}>Filters & Sort</Text>
+              <Pressable
+                accessibilityLabel="Close filters"
+                accessibilityRole="button"
+                onPress={toggleFilterMenu}
+                style={({ pressed }): StyleProp<ViewStyle> => {
+                  return [styles.iconButton, pressed ? styles.controlPressed : null];
+                }}
+              >
+                <Icon name="close" />
+              </Pressable>
+            </View>
+            <ScrollView contentContainerStyle={styles.filterPanel}>
+              <Text style={styles.formLabel}>Inventory status</Text>
+              <View style={styles.viewToggle}>
+                <SegmentButton
+                  isActive={draftFilters.archiveStatus === 'active'}
+                  label="Active"
+                  onPress={(): void => {
+                    updateDraftFilters({ archiveStatus: 'active' });
+                  }}
+                />
+                <SegmentButton
+                  isActive={draftFilters.archiveStatus === 'archived'}
+                  label="Archived"
+                  onPress={(): void => {
+                    updateDraftFilters({ archiveStatus: 'archived' });
+                  }}
+                />
+              </View>
+
+              <DropdownFilter
+                isOpen={openDropdown === 'type'}
+                label="Type"
+                selectedSummary={formatSelectedSummary(draftFilters.productTypes, 'All types')}
+                onToggle={(): void => {
+                  toggleDropdown('type');
+                }}
+              >
+                <MultiSelectOptions
+                  options={productTypes}
+                  selectedOptions={draftFilters.productTypes}
+                  onChange={(selectedOptions: Array<string>): void => {
+                    updateDraftFilters({ productTypes: selectedOptions });
+                  }}
+                />
+              </DropdownFilter>
+
+              <DropdownFilter
+                isOpen={openDropdown === 'category'}
+                label="Category"
+                selectedSummary={formatSelectedSummary(
+                  draftFilters.categories.map((category: InventoryCategory): string => {
+                    return formatFilterLabel(category);
+                  }),
+                  'All categories',
+                )}
+                onToggle={(): void => {
+                  toggleDropdown('category');
+                }}
+              >
+                <MultiSelectOptions
+                  formatOptionLabel={formatFilterLabel}
+                  options={allCategories}
+                  selectedOptions={draftFilters.categories}
+                  onChange={(selectedOptions: Array<InventoryCategory>): void => {
+                    updateDraftFilters({ categories: selectedOptions });
+                  }}
+                />
+              </DropdownFilter>
+
+              <DropdownFilter
+                isOpen={openDropdown === 'stock'}
+                label="Stock"
+                selectedSummary={formatSelectedSummary(
+                  draftFilters.stockStatuses.map((stockStatus: StockStatus): string => {
+                    return formatFilterLabel(stockStatus);
+                  }),
+                  'All stock',
+                )}
+                onToggle={(): void => {
+                  toggleDropdown('stock');
+                }}
+              >
+                <MultiSelectOptions
+                  formatOptionLabel={formatFilterLabel}
+                  options={stockFilters}
+                  selectedOptions={draftFilters.stockStatuses}
+                  onChange={(selectedOptions: Array<StockStatus>): void => {
+                    updateDraftFilters({ stockStatuses: selectedOptions });
+                  }}
+                />
+              </DropdownFilter>
+
+              <DropdownFilter
+                isOpen={openDropdown === 'sort'}
+                label="Sort"
+                selectedSummary={getSortLabel(draftFilters)}
+                onToggle={(): void => {
+                  toggleDropdown('sort');
+                }}
+              >
+                <SortOptions
+                  filters={draftFilters}
+                  onChange={(sortSelection: SortSelection): void => {
+                    updateDraftFilters({
+                      sortBy: sortSelection.sortBy,
+                      sortDirection: sortSelection.direction,
+                    });
+                    setOpenDropdown(null);
+                  }}
+                />
+              </DropdownFilter>
+
+              <Pressable
+                accessibilityRole="button"
+                onPress={applyDraftFilters}
+                style={({ pressed }): StyleProp<ViewStyle> => {
+                  return [styles.applyButton, pressed ? styles.controlPressed : null];
+                }}
+              >
+                <Text style={styles.applyButtonText}>Apply</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                onPress={clearFilters}
+                style={({ pressed }): StyleProp<ViewStyle> => {
+                  return [styles.secondaryButton, pressed ? styles.controlPressed : null];
+                }}
+              >
+                <Text style={styles.secondaryButtonText}>Reset Filters</Text>
+              </Pressable>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -695,10 +908,112 @@ function DropdownFilter({
             {selectedSummary}
           </Text>
         </View>
-        <Text style={styles.dropdownIcon}>{isOpen ? 'v' : '>'}</Text>
+        <Icon name={isOpen ? 'chevronDown' : 'chevronRight'} style={styles.dropdownIcon} />
       </Pressable>
 
       {isOpen ? <View style={styles.dropdownPanel}>{children}</View> : null}
+    </View>
+  );
+}
+
+function ActiveFilterChips({
+  filters,
+  onChange,
+}: {
+  filters: BarFilterState;
+  onChange: (filters: BarFilterState) => void;
+}): React.JSX.Element | null {
+  const chips: Array<{ label: string; onRemove: () => void }> = [];
+
+  if (filters.archiveStatus === 'archived') {
+    chips.push({
+      label: 'Archived',
+      onRemove: (): void => {
+        onChange({ ...filters, archiveStatus: 'active' });
+      },
+    });
+  }
+
+  filters.categories.forEach((category: InventoryCategory): void => {
+    chips.push({
+      label: formatFilterLabel(category),
+      onRemove: (): void => {
+        onChange({
+          ...filters,
+          categories: filters.categories.filter((selectedCategory: InventoryCategory): boolean => {
+            return selectedCategory !== category;
+          }),
+        });
+      },
+    });
+  });
+
+  filters.productTypes.forEach((productType: string): void => {
+    chips.push({
+      label: productType,
+      onRemove: (): void => {
+        onChange({
+          ...filters,
+          productTypes: filters.productTypes.filter((selectedType: string): boolean => {
+            return selectedType !== productType;
+          }),
+        });
+      },
+    });
+  });
+
+  filters.stockStatuses.forEach((stockStatus: StockStatus): void => {
+    chips.push({
+      label: formatFilterLabel(stockStatus),
+      onRemove: (): void => {
+        onChange({
+          ...filters,
+          stockStatuses: filters.stockStatuses.filter((selectedStatus: StockStatus): boolean => {
+            return selectedStatus !== stockStatus;
+          }),
+        });
+      },
+    });
+  });
+
+  if (
+    filters.sortBy !== initialFilters.sortBy ||
+    filters.sortDirection !== initialFilters.sortDirection
+  ) {
+    chips.push({
+      label: getSortLabel(filters),
+      onRemove: (): void => {
+        onChange({
+          ...filters,
+          sortBy: initialFilters.sortBy,
+          sortDirection: initialFilters.sortDirection,
+        });
+      },
+    });
+  }
+
+  if (chips.length === 0) {
+    return null;
+  }
+
+  return (
+    <View style={styles.activeChips}>
+      {chips.map((chip): React.JSX.Element => {
+        return (
+          <Pressable
+            accessibilityLabel={`Remove ${chip.label} filter`}
+            accessibilityRole="button"
+            key={chip.label}
+            onPress={chip.onRemove}
+            style={({ pressed }): StyleProp<ViewStyle> => {
+              return [styles.activeChip, pressed ? styles.controlPressed : null];
+            }}
+          >
+            <Text style={styles.activeChipText}>{chip.label}</Text>
+            <Icon name="close" style={styles.activeChipIcon} />
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -752,7 +1067,7 @@ function MultiSelectOptions<T extends string>({
             }}
           >
             <View style={[styles.checkbox, isSelected ? styles.checkboxSelected : null]}>
-              <Text style={styles.checkboxText}>{isSelected ? 'x' : ''}</Text>
+              {isSelected ? <Icon name="check" style={styles.checkboxText} /> : null}
             </View>
             <Text style={styles.dropdownOptionText}>
               {formatOptionLabel ? formatOptionLabel(option) : option}
@@ -793,9 +1108,9 @@ function SortOptions({ filters, onChange }: SortOptionsProps): React.JSX.Element
               ];
             }}
           >
-            <Text style={[styles.radioMark, isSelected ? styles.radioMarkSelected : null]}>
-              {isSelected ? 'o' : ''}
-            </Text>
+            <View style={[styles.radioMark, isSelected ? styles.radioMarkSelected : null]}>
+              {isSelected ? <Icon name="check" style={styles.checkboxText} /> : null}
+            </View>
             <Text style={styles.dropdownOptionText}>{sortSelection.label}</Text>
           </Pressable>
         );
@@ -830,370 +1145,6 @@ function SegmentButton({ isActive, label, onPress }: ButtonProps): React.JSX.Ele
   );
 }
 
-type BarAccordionRowProps = {
-  isExpanded: boolean;
-  item: InventoryItem;
-  onArchive: (itemId: string) => void;
-  onDuplicate: (item: InventoryItem) => void;
-  onEdit: (item: InventoryItem) => void;
-  onPress: () => void;
-  onRemove: (item: InventoryItem) => void;
-  onRestore: (itemId: string) => void;
-  onToggleOpen: (item: InventoryItem) => void;
-  onToggleVisibility: (item: InventoryItem) => void;
-};
-
-function BarAccordionRow({
-  isExpanded,
-  item,
-  onArchive,
-  onDuplicate,
-  onEdit,
-  onPress,
-  onRemove,
-  onRestore,
-  onToggleOpen,
-  onToggleVisibility,
-}: BarAccordionRowProps): React.JSX.Element {
-  return (
-    <View style={styles.accordionCard}>
-      <Pressable
-        accessibilityRole="button"
-        onPress={onPress}
-        style={({ pressed }): StyleProp<ViewStyle> => {
-          return [styles.accordionSummary, pressed ? styles.controlPressed : null];
-        }}
-      >
-        <Text style={[styles.expandIcon, isExpanded ? styles.expandIconOpen : null]}>{'>'}</Text>
-        <StatusIcon item={item} />
-        <View style={styles.summaryText}>
-          <Text style={styles.itemName}>{item.name}</Text>
-          <Text style={styles.itemType}>
-            {[item.brand, item.productType ?? formatFilterLabel(item.category)]
-              .filter(Boolean)
-              .join(' · ')}
-          </Text>
-          <View style={styles.summaryBadges}>
-            <Text style={styles.summaryBadge}>
-              {formatFilterLabel(item.visibility ?? 'private')}
-            </Text>
-            {item.isArchived ? <Text style={styles.summaryBadge}>Archived</Text> : null}
-            {item.isOpen ? <Text style={styles.summaryBadge}>Open</Text> : null}
-          </View>
-        </View>
-        <Text style={styles.ratingText}>{formatRating(item.rating)}</Text>
-      </Pressable>
-
-      {isExpanded ? (
-        <ProductDetails
-          item={item}
-          onArchive={onArchive}
-          onDuplicate={onDuplicate}
-          onEdit={onEdit}
-          onRemove={onRemove}
-          onRestore={onRestore}
-          onToggleOpen={onToggleOpen}
-          onToggleVisibility={onToggleVisibility}
-        />
-      ) : null}
-    </View>
-  );
-}
-
-type ProductCardProps = {
-  item: InventoryItem;
-};
-
-type ProductActionsProps = ProductCardProps & {
-  onArchive?: (itemId: string) => void;
-  onDuplicate: (item: InventoryItem) => void;
-  onEdit: (item: InventoryItem) => void;
-  onRemove?: (item: InventoryItem) => void;
-  onRestore?: (itemId: string) => void;
-  onToggleOpen: (item: InventoryItem) => void;
-  onToggleVisibility: (item: InventoryItem) => void;
-};
-
-function BarDisplayCard({
-  item,
-  onArchive,
-  onDuplicate,
-  onEdit,
-  onRemove,
-  onRestore,
-  onToggleOpen,
-  onToggleVisibility,
-}: ProductActionsProps): React.JSX.Element {
-  return (
-    <View style={styles.displayCard}>
-      <View style={styles.displayStatusRow}>
-        <StatusIcon item={item} />
-        <Text style={styles.displayRating}>{formatRating(item.rating)}</Text>
-      </View>
-      <Text style={styles.displayName}>{item.name}</Text>
-      <Text style={styles.itemType}>
-        {[item.brand, item.productType ?? formatFilterLabel(item.category)]
-          .filter(Boolean)
-          .join(' · ')}
-      </Text>
-      <Text style={styles.displayQuantity}>
-        {item.quantity} {item.unit}
-      </Text>
-      <View style={styles.summaryBadges}>
-        <Text style={styles.summaryBadge}>{formatFilterLabel(item.visibility ?? 'private')}</Text>
-        {item.isArchived ? <Text style={styles.summaryBadge}>Archived</Text> : null}
-        {item.isOpen ? <Text style={styles.summaryBadge}>Open</Text> : null}
-      </View>
-      <Pressable
-        accessibilityRole="button"
-        onPress={(): void => {
-          onEdit(item);
-        }}
-        style={({ pressed }): StyleProp<ViewStyle> => {
-          return [styles.secondaryButton, pressed ? styles.controlPressed : null];
-        }}
-      >
-        <Text style={styles.secondaryButtonText}>Edit</Text>
-      </Pressable>
-      <Pressable
-        accessibilityRole="button"
-        onPress={(): void => {
-          onDuplicate(item);
-        }}
-        style={({ pressed }): StyleProp<ViewStyle> => {
-          return [styles.secondaryButton, pressed ? styles.controlPressed : null];
-        }}
-      >
-        <Text style={styles.secondaryButtonText}>Duplicate</Text>
-      </Pressable>
-      <Pressable
-        accessibilityRole="button"
-        onPress={(): void => {
-          onToggleOpen(item);
-        }}
-        style={({ pressed }): StyleProp<ViewStyle> => {
-          return [styles.secondaryButton, pressed ? styles.controlPressed : null];
-        }}
-      >
-        <Text style={styles.secondaryButtonText}>
-          {item.isOpen ? 'Mark Unopened' : 'Mark Open'}
-        </Text>
-      </Pressable>
-      <Pressable
-        accessibilityRole="button"
-        onPress={(): void => {
-          onToggleVisibility(item);
-        }}
-        style={({ pressed }): StyleProp<ViewStyle> => {
-          return [styles.secondaryButton, pressed ? styles.controlPressed : null];
-        }}
-      >
-        <Text style={styles.secondaryButtonText}>
-          Visibility: {formatFilterLabel(item.visibility ?? 'private')}
-        </Text>
-      </Pressable>
-      {item.isArchived ? (
-        <Pressable
-          accessibilityRole="button"
-          onPress={(): void => {
-            onRestore?.(item.id);
-          }}
-          style={({ pressed }): StyleProp<ViewStyle> => {
-            return [styles.secondaryButton, pressed ? styles.controlPressed : null];
-          }}
-        >
-          <Text style={styles.secondaryButtonText}>Restore</Text>
-        </Pressable>
-      ) : (
-        <Pressable
-          accessibilityRole="button"
-          onPress={(): void => {
-            onArchive?.(item.id);
-          }}
-          style={({ pressed }): StyleProp<ViewStyle> => {
-            return [styles.secondaryButton, pressed ? styles.controlPressed : null];
-          }}
-        >
-          <Text style={styles.secondaryButtonText}>Archive</Text>
-        </Pressable>
-      )}
-      <Pressable
-        accessibilityRole="button"
-        onPress={(): void => {
-          onRemove?.(item);
-        }}
-        style={({ pressed }): StyleProp<ViewStyle> => {
-          return [styles.dangerButton, pressed ? styles.controlPressed : null];
-        }}
-      >
-        <Text style={styles.dangerButtonText}>Delete</Text>
-      </Pressable>
-    </View>
-  );
-}
-
-function ProductDetails({
-  item,
-  onArchive,
-  onDuplicate,
-  onEdit,
-  onRemove,
-  onRestore,
-  onToggleOpen,
-  onToggleVisibility,
-}: ProductActionsProps): React.JSX.Element {
-  return (
-    <View style={styles.details}>
-      <DetailLine label="Stock" value={`${item.quantity} ${item.unit} available`} />
-      {item.brand ? <DetailLine label="Brand" value={item.brand} /> : null}
-      {item.subcategory ? <DetailLine label="Subcategory" value={item.subcategory} /> : null}
-      {item.size ? <DetailLine label="Size" value={item.size} /> : null}
-      {item.proof !== null && item.proof !== undefined ? (
-        <DetailLine label="Proof" value={`${item.proof}`} />
-      ) : null}
-      <DetailLine label="Open" value={item.isOpen ? 'Yes' : 'No'} />
-      <DetailLine label="Visibility" value={formatFilterLabel(item.visibility ?? 'private')} />
-      {item.tags && item.tags.length > 0 ? (
-        <DetailLine label="Tags" value={item.tags.join(', ')} />
-      ) : null}
-      {item.holdings?.map((holding: InventoryHolding): React.JSX.Element => {
-        return (
-          <DetailLine
-            key={holding.id}
-            label={holding.label}
-            value={`${holding.amount} ${item.unit}`}
-          />
-        );
-      })}
-      {item.abv !== undefined ? <DetailLine label="ABV" value={`${item.abv}%`} /> : null}
-      {item.description ? <DetailBlock label="Description" value={item.description} /> : null}
-      {item.ratingComments ? (
-        <DetailBlock label="Rating notes" value={item.ratingComments} />
-      ) : null}
-      {item.notes ? <DetailBlock label="Bar notes" value={item.notes} /> : null}
-      <View style={styles.itemActionRow}>
-        <Pressable
-          accessibilityRole="button"
-          onPress={(): void => {
-            onEdit(item);
-          }}
-          style={({ pressed }): StyleProp<ViewStyle> => {
-            return [styles.secondaryButton, pressed ? styles.controlPressed : null];
-          }}
-        >
-          <Text style={styles.secondaryButtonText}>Edit</Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          onPress={(): void => {
-            onDuplicate(item);
-          }}
-          style={({ pressed }): StyleProp<ViewStyle> => {
-            return [styles.secondaryButton, pressed ? styles.controlPressed : null];
-          }}
-        >
-          <Text style={styles.secondaryButtonText}>Duplicate</Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          onPress={(): void => {
-            onToggleOpen(item);
-          }}
-          style={({ pressed }): StyleProp<ViewStyle> => {
-            return [styles.secondaryButton, pressed ? styles.controlPressed : null];
-          }}
-        >
-          <Text style={styles.secondaryButtonText}>
-            {item.isOpen ? 'Mark Unopened' : 'Mark Open'}
-          </Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          onPress={(): void => {
-            onToggleVisibility(item);
-          }}
-          style={({ pressed }): StyleProp<ViewStyle> => {
-            return [styles.secondaryButton, pressed ? styles.controlPressed : null];
-          }}
-        >
-          <Text style={styles.secondaryButtonText}>
-            Visibility: {formatFilterLabel(item.visibility ?? 'private')}
-          </Text>
-        </Pressable>
-        {item.isArchived ? (
-          <Pressable
-            accessibilityRole="button"
-            onPress={(): void => {
-              onRestore?.(item.id);
-            }}
-            style={({ pressed }): StyleProp<ViewStyle> => {
-              return [styles.secondaryButton, pressed ? styles.controlPressed : null];
-            }}
-          >
-            <Text style={styles.secondaryButtonText}>Restore</Text>
-          </Pressable>
-        ) : (
-          <Pressable
-            accessibilityRole="button"
-            onPress={(): void => {
-              onArchive?.(item.id);
-            }}
-            style={({ pressed }): StyleProp<ViewStyle> => {
-              return [styles.secondaryButton, pressed ? styles.controlPressed : null];
-            }}
-          >
-            <Text style={styles.secondaryButtonText}>Archive</Text>
-          </Pressable>
-        )}
-        <Pressable
-          accessibilityRole="button"
-          onPress={(): void => {
-            onRemove?.(item);
-          }}
-          style={({ pressed }): StyleProp<ViewStyle> => {
-            return [styles.dangerButton, pressed ? styles.controlPressed : null];
-          }}
-        >
-          <Text style={styles.dangerButtonText}>Delete</Text>
-        </Pressable>
-      </View>
-    </View>
-  );
-}
-
-type DetailProps = {
-  label: string;
-  value: string;
-};
-
-function DetailLine({ label, value }: DetailProps): React.JSX.Element {
-  return (
-    <View style={styles.detailLine}>
-      <Text style={styles.detailLabel}>{label}</Text>
-      <Text style={styles.detailValue}>{value}</Text>
-    </View>
-  );
-}
-
-function DetailBlock({ label, value }: DetailProps): React.JSX.Element {
-  return (
-    <View style={styles.detailBlock}>
-      <Text style={styles.detailLabel}>{label}</Text>
-      <Text style={styles.detailCopy}>{value}</Text>
-    </View>
-  );
-}
-
-function StatusIcon({ item }: ProductCardProps): React.JSX.Element {
-  const status = getStockStatus(item);
-
-  return (
-    <View style={[styles.statusIcon, getStatusIconStyle(status)]}>
-      <Text style={styles.statusIconText}>{getStatusIconLabel(status)}</Text>
-    </View>
-  );
-}
-
 type ItemEditorModalProps = {
   catalogItems: Array<InventoryItem>;
   form: ItemFormState;
@@ -1214,6 +1165,7 @@ function ItemEditorModal({
   visible,
 }: ItemEditorModalProps): React.JSX.Element {
   const [isAutocompleteOpen, setIsAutocompleteOpen] = useState<boolean>(false);
+  const [isMoreDetailsOpen, setIsMoreDetailsOpen] = useState<boolean>(false);
   const suggestions = useMemo((): Array<InventoryItem> => {
     const query = form.name.trim().toLowerCase();
 
@@ -1232,6 +1184,11 @@ function ItemEditorModal({
     onChange({ ...form, ...partialForm });
   };
   const isCatalogSelected = form.catalogItemId !== null;
+  const isAlcoholCategory =
+    form.category === 'spirit' ||
+    form.category === 'liqueur' ||
+    form.category === 'wine' ||
+    form.category === 'beer';
 
   const selectCatalogItem = (item: InventoryItem): void => {
     onChange({
@@ -1255,17 +1212,22 @@ function ItemEditorModal({
     });
   };
 
-  const addHolding = (): void => {
+  const addHolding = (label = 'Unopened', amount = '1'): void => {
     updateForm({
       holdings: [
         ...form.holdings,
         {
-          amount: '1',
+          amount,
           id: `holding-${Date.now()}`,
-          label: 'Unopened bottle',
+          label,
         },
       ],
     });
+  };
+
+  const useCustomItem = (): void => {
+    updateForm({ catalogItemId: null });
+    setIsAutocompleteOpen(false);
   };
 
   const removeHolding = (holdingId: string): void => {
@@ -1306,13 +1268,13 @@ function ItemEditorModal({
                 return [styles.iconButton, pressed ? styles.controlPressed : null];
               }}
             >
-              <Text style={styles.iconButtonText}>x</Text>
+              <Icon name="close" />
             </Pressable>
           </View>
 
           <ScrollView keyboardShouldPersistTaps="handled" style={styles.editorScroll}>
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Item</Text>
+              <Text style={styles.formLabel}>Basics</Text>
               <TextInput
                 onChangeText={(name: string): void => {
                   updateForm({ name });
@@ -1346,10 +1308,40 @@ function ItemEditorModal({
                         <Text style={styles.autocompleteTitle}>{item.name}</Text>
                         <Text style={styles.autocompleteSubtitle}>
                           {item.productType ?? formatFilterLabel(item.category)}
+                          {item.brand ? ` · ${item.brand}` : ''}
                         </Text>
                       </Pressable>
                     );
                   })}
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={useCustomItem}
+                    style={({ pressed }): StyleProp<ViewStyle> => {
+                      return [styles.autocompleteOption, pressed ? styles.controlPressed : null];
+                    }}
+                  >
+                    <Text style={styles.autocompleteTitle}>Use custom item</Text>
+                    <Text style={styles.autocompleteSubtitle}>
+                      Keep the fields you type and manage this item manually.
+                    </Text>
+                  </Pressable>
+                </View>
+              ) : null}
+              {isCatalogSelected ? (
+                <View style={styles.catalogNotice}>
+                  <Text style={styles.helperText}>
+                    Catalog fields are locked for consistency. Add notes, stock, and visibility
+                    below.
+                  </Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={useCustomItem}
+                    style={({ pressed }): StyleProp<ViewStyle> => {
+                      return [styles.smallInlineButton, pressed ? styles.controlPressed : null];
+                    }}
+                  >
+                    <Text style={styles.smallInlineButtonText}>Clear catalog selection</Text>
+                  </Pressable>
                 </View>
               ) : null}
             </View>
@@ -1404,100 +1396,130 @@ function ItemEditorModal({
               </View>
             </View>
 
-            <View style={styles.formRow}>
-              <View style={styles.formColumn}>
-                <Text style={styles.formLabel}>Type</Text>
-                <TextInput
-                  editable={!isCatalogSelected}
-                  onChangeText={(productType: string): void => {
-                    updateForm({ productType });
-                  }}
-                  placeholder="Whiskey"
-                  placeholderTextColor={colors.textSecondary}
-                  style={[
-                    styles.editorInput,
-                    isCatalogSelected ? styles.editorInputDisabled : null,
-                  ]}
-                  value={form.productType}
-                />
-              </View>
-              <View style={styles.formColumn}>
-                <Text style={styles.formLabel}>ABV</Text>
-                <TextInput
-                  editable={!isCatalogSelected}
-                  keyboardType="numeric"
-                  onChangeText={(abv: string): void => {
-                    updateForm({ abv });
-                  }}
-                  placeholder="40"
-                  placeholderTextColor={colors.textSecondary}
-                  style={[
-                    styles.editorInput,
-                    isCatalogSelected ? styles.editorInputDisabled : null,
-                  ]}
-                  value={form.abv}
-                />
-              </View>
-            </View>
-
-            <View style={styles.formRow}>
-              <View style={styles.formColumn}>
-                <Text style={styles.formLabel}>Proof</Text>
-                <TextInput
-                  editable={!isCatalogSelected}
-                  keyboardType="numeric"
-                  onChangeText={(proof: string): void => {
-                    updateForm({ proof });
-                  }}
-                  placeholder="80"
-                  placeholderTextColor={colors.textSecondary}
-                  style={[
-                    styles.editorInput,
-                    isCatalogSelected ? styles.editorInputDisabled : null,
-                  ]}
-                  value={form.proof}
-                />
-              </View>
-              <View style={styles.formColumn}>
-                <Text style={styles.formLabel}>Size</Text>
-                <TextInput
-                  editable={!isCatalogSelected}
-                  onChangeText={(size: string): void => {
-                    updateForm({ size });
-                  }}
-                  placeholder="750 ml"
-                  placeholderTextColor={colors.textSecondary}
-                  style={[
-                    styles.editorInput,
-                    isCatalogSelected ? styles.editorInputDisabled : null,
-                  ]}
-                  value={form.size}
-                />
-              </View>
-            </View>
-
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Unit</Text>
-              <View style={styles.optionRow}>
-                {(['bottle', 'ml', 'oz', 'count'] as const).map(
-                  (unit: InventoryItem['unit']): React.JSX.Element => {
-                    return (
-                      <FormOption
-                        key={unit}
-                        isSelected={form.unit === unit}
-                        label={unit}
-                        onPress={(): void => {
-                          updateForm({ unit });
+              <Pressable
+                accessibilityRole="button"
+                onPress={(): void => {
+                  setIsMoreDetailsOpen((isOpen: boolean): boolean => {
+                    return !isOpen;
+                  });
+                }}
+                style={({ pressed }): StyleProp<ViewStyle> => {
+                  return [styles.moreDetailsButton, pressed ? styles.controlPressed : null];
+                }}
+              >
+                <Text style={styles.secondaryButtonText}>
+                  {isMoreDetailsOpen ? 'Hide Photo & Advanced Details' : 'Photo & Advanced Details'}
+                </Text>
+              </Pressable>
+            </View>
+
+            {isMoreDetailsOpen ? (
+              <>
+                <View style={styles.formRow}>
+                  <View style={styles.formColumn}>
+                    <Text style={styles.formLabel}>Type</Text>
+                    <TextInput
+                      editable={!isCatalogSelected}
+                      onChangeText={(productType: string): void => {
+                        updateForm({ productType });
+                      }}
+                      placeholder="Whiskey, glass, tool"
+                      placeholderTextColor={colors.textSecondary}
+                      style={[
+                        styles.editorInput,
+                        isCatalogSelected ? styles.editorInputDisabled : null,
+                      ]}
+                      value={form.productType}
+                    />
+                  </View>
+                  {isAlcoholCategory ? (
+                    <View style={styles.formColumn}>
+                      <Text style={styles.formLabel}>ABV</Text>
+                      <TextInput
+                        editable={!isCatalogSelected}
+                        keyboardType="numeric"
+                        onChangeText={(abv: string): void => {
+                          updateForm({ abv });
                         }}
+                        placeholder="40"
+                        placeholderTextColor={colors.textSecondary}
+                        style={[
+                          styles.editorInput,
+                          isCatalogSelected ? styles.editorInputDisabled : null,
+                        ]}
+                        value={form.abv}
                       />
-                    );
-                  },
-                )}
-              </View>
-            </View>
+                    </View>
+                  ) : null}
+                </View>
 
-            <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Bottle status</Text>
+                <View style={styles.formRow}>
+                  {isAlcoholCategory ? (
+                    <View style={styles.formColumn}>
+                      <Text style={styles.formLabel}>Proof</Text>
+                      <TextInput
+                        editable={!isCatalogSelected}
+                        keyboardType="numeric"
+                        onChangeText={(proof: string): void => {
+                          updateForm({ proof });
+                        }}
+                        placeholder="80"
+                        placeholderTextColor={colors.textSecondary}
+                        style={[
+                          styles.editorInput,
+                          isCatalogSelected ? styles.editorInputDisabled : null,
+                        ]}
+                        value={form.proof}
+                      />
+                    </View>
+                  ) : null}
+                  <View style={styles.formColumn}>
+                    <Text style={styles.formLabel}>Size</Text>
+                    <TextInput
+                      editable={!isCatalogSelected}
+                      onChangeText={(size: string): void => {
+                        updateForm({ size });
+                      }}
+                      placeholder={isAlcoholCategory ? '750 ml' : '10 count'}
+                      placeholderTextColor={colors.textSecondary}
+                      style={[
+                        styles.editorInput,
+                        isCatalogSelected ? styles.editorInputDisabled : null,
+                      ]}
+                      value={form.size}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>Unit</Text>
+                  <View style={styles.optionRow}>
+                    {(['bottle', 'ml', 'oz', 'count'] as const).map(
+                      (unit: InventoryItem['unit']): React.JSX.Element => {
+                        return (
+                          <FormOption
+                            key={unit}
+                            isSelected={form.unit === unit}
+                            label={unit}
+                            onPress={(): void => {
+                              updateForm({ unit });
+                            }}
+                          />
+                        );
+                      },
+                    )}
+                  </View>
+                </View>
+              </>
+            ) : null}
+
+            <View style={styles.formSection}>
+              <Text style={styles.formSectionTitle}>Stock</Text>
+              <Text style={styles.helperText}>
+                What you have. Total is calculated from holdings.
+              </Text>
+              <Text style={styles.formLabel}>Open status</Text>
               <View style={styles.viewToggle}>
                 <SegmentButton
                   isActive={!form.isOpen}
@@ -1518,16 +1540,30 @@ function ItemEditorModal({
 
             <View style={styles.formGroup}>
               <View style={styles.formSectionHeader}>
-                <Text style={styles.formLabel}>Quantity</Text>
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={addHolding}
-                  style={({ pressed }): StyleProp<ViewStyle> => {
-                    return [styles.secondaryButton, pressed ? styles.controlPressed : null];
+                <Text style={styles.formLabel}>What you have</Text>
+                <Text style={styles.totalText}>
+                  Total: {calculateHoldingQuantity(form.holdings)} {form.unit}
+                </Text>
+              </View>
+              <View style={styles.formActionRow}>
+                <MiniAction
+                  label="Add unopened"
+                  onPress={(): void => {
+                    return addHolding('Unopened', '1');
                   }}
-                >
-                  <Text style={styles.secondaryButtonText}>Add</Text>
-                </Pressable>
+                />
+                <MiniAction
+                  label="Add open"
+                  onPress={(): void => {
+                    return addHolding('Open', '1');
+                  }}
+                />
+                <MiniAction
+                  label="Add custom"
+                  onPress={(): void => {
+                    return addHolding('Custom', '0');
+                  }}
+                />
               </View>
               {form.holdings.map((holding: ItemHoldingFormState): React.JSX.Element => {
                 return (
@@ -1547,7 +1583,9 @@ function ItemEditorModal({
                       <TextInput
                         keyboardType="numeric"
                         onChangeText={(amount: string): void => {
-                          updateHolding(holding.id, { amount });
+                          updateHolding(holding.id, {
+                            amount: amount.startsWith('-') ? '0' : amount,
+                          });
                         }}
                         placeholder="0"
                         placeholderTextColor={colors.textSecondary}
@@ -1557,14 +1595,19 @@ function ItemEditorModal({
                     </View>
                     <Pressable
                       accessibilityRole="button"
+                      disabled={form.holdings.length <= 1}
                       onPress={(): void => {
                         removeHolding(holding.id);
                       }}
                       style={({ pressed }): StyleProp<ViewStyle> => {
-                        return [styles.iconButton, pressed ? styles.controlPressed : null];
+                        return [
+                          styles.iconButton,
+                          form.holdings.length <= 1 ? styles.formOptionDisabled : null,
+                          pressed ? styles.controlPressed : null,
+                        ];
                       }}
                     >
-                      <Text style={styles.iconButtonText}>-</Text>
+                      <Icon name="remove" />
                     </Pressable>
                   </View>
                 );
@@ -1612,15 +1655,11 @@ function ItemEditorModal({
 
             <View style={styles.formGroup}>
               <Text style={styles.formLabel}>Your rating</Text>
-              <TextInput
-                keyboardType="numeric"
-                onChangeText={(rating: string): void => {
-                  updateForm({ rating });
+              <RatingPicker
+                rating={parseOptionalNumber(form.rating)}
+                onChange={(rating: number | undefined): void => {
+                  updateForm({ rating: rating?.toString() ?? '' });
                 }}
-                placeholder="0-5"
-                placeholderTextColor={colors.textSecondary}
-                style={styles.editorInput}
-                value={form.rating}
               />
             </View>
 
@@ -1668,6 +1707,9 @@ function ItemEditorModal({
 
             <View style={styles.formGroup}>
               <Text style={styles.formLabel}>Public notes</Text>
+              <Text style={styles.helperText}>
+                Private notes stay local. Public notes can appear in guest views.
+              </Text>
               <TextInput
                 multiline
                 onChangeText={(publicNotes: string): void => {
@@ -1699,10 +1741,10 @@ function ItemEditorModal({
                 {(['private', 'shared', 'guest_visible'] as const).map(
                   (visibility: InventoryVisibility): React.JSX.Element => {
                     return (
-                      <FormOption
+                      <VisibilityOption
                         key={visibility}
                         isSelected={form.visibility === visibility}
-                        label={formatFilterLabel(visibility)}
+                        visibility={visibility}
                         onPress={(): void => {
                           updateForm({ visibility });
                         }}
@@ -1781,7 +1823,104 @@ function FormOption({
   );
 }
 
-function EmptyState({ kind }: { kind: EmptyStateKind }): React.JSX.Element {
+function MiniAction({ label, onPress }: { label: string; onPress: () => void }): React.JSX.Element {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }): StyleProp<ViewStyle> => {
+        return [styles.smallInlineButton, pressed ? styles.controlPressed : null];
+      }}
+    >
+      <Text style={styles.smallInlineButtonText}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function RatingPicker({
+  onChange,
+  rating,
+}: {
+  onChange: (rating: number | undefined) => void;
+  rating: number | undefined;
+}): React.JSX.Element {
+  return (
+    <View style={styles.ratingPicker}>
+      {[1, 2, 3, 4, 5].map((value: number): React.JSX.Element => {
+        const isSelected = rating !== undefined && value <= rating;
+
+        return (
+          <Pressable
+            accessibilityLabel={`Rate ${value} out of 5`}
+            accessibilityRole="button"
+            key={value}
+            onPress={(): void => {
+              onChange(value);
+            }}
+            style={({ pressed }): StyleProp<ViewStyle> => {
+              return [styles.starButton, pressed ? styles.controlPressed : null];
+            }}
+          >
+            <Icon name="star" style={isSelected ? styles.starSelected : styles.starEmpty} />
+          </Pressable>
+        );
+      })}
+      <Pressable
+        accessibilityRole="button"
+        onPress={(): void => {
+          onChange(undefined);
+        }}
+        style={({ pressed }): StyleProp<ViewStyle> => {
+          return [styles.smallInlineButton, pressed ? styles.controlPressed : null];
+        }}
+      >
+        <Text style={styles.smallInlineButtonText}>
+          {rating === undefined ? 'Not rated' : `${rating} / 5 · Clear`}
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function VisibilityOption({
+  isSelected,
+  onPress,
+  visibility,
+}: {
+  isSelected: boolean;
+  onPress: () => void;
+  visibility: InventoryVisibility;
+}): React.JSX.Element {
+  const label = formatFilterLabel(visibility);
+  const helper =
+    visibility === 'private'
+      ? 'Only visible to you.'
+      : visibility === 'shared'
+        ? 'Available for share previews when included.'
+        : 'Highlighted for guests.';
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected: isSelected }}
+      onPress={onPress}
+      style={({ pressed }): StyleProp<ViewStyle> => {
+        return [
+          styles.visibilityOption,
+          isSelected ? styles.formOptionSelected : null,
+          pressed ? styles.controlPressed : null,
+        ];
+      }}
+    >
+      <Text style={[styles.formOptionText, isSelected ? styles.formOptionTextSelected : null]}>
+        {label}
+      </Text>
+      <Text style={styles.visibilityOptionHelper}>{helper}</Text>
+    </Pressable>
+  );
+}
+
+function _EmptyState({ kind }: { kind: EmptyStateKind }): React.JSX.Element {
   const copy = getEmptyStateCopy(kind);
 
   return (
@@ -1969,30 +2108,6 @@ function getStockStatus(item: InventoryItem): StockStatus {
   return 'inStock';
 }
 
-function getStatusIconLabel(status: StockStatus): string {
-  if (status === 'outOfStock') {
-    return '!';
-  }
-
-  if (status === 'lowStock') {
-    return '-';
-  }
-
-  return '+';
-}
-
-function getStatusIconStyle(status: StockStatus): ViewStyle {
-  if (status === 'outOfStock') {
-    return styles.statusOut;
-  }
-
-  if (status === 'lowStock') {
-    return styles.statusLow;
-  }
-
-  return styles.statusIn;
-}
-
 function compareInventoryItems(
   left: InventoryItem,
   right: InventoryItem,
@@ -2032,6 +2147,23 @@ function getSortLabel(filters: BarFilterState): string {
   return selectedSort?.label ?? 'Name A-Z';
 }
 
+function getActiveFilterCount(filters: BarFilterState): number {
+  return (
+    (filters.archiveStatus === 'archived' ? 1 : 0) +
+    filters.categories.length +
+    filters.productTypes.length +
+    filters.stockStatuses.length +
+    (filters.sortBy !== initialFilters.sortBy ||
+    filters.sortDirection !== initialFilters.sortDirection
+      ? 1
+      : 0)
+  );
+}
+
+function modeLabel(mode: EditorMode): string {
+  return mode === 'add' ? 'Item saved.' : 'Item updated.';
+}
+
 function formatSelectedSummary(selectedValues: Array<string>, fallback: string): string {
   if (selectedValues.length === 0) {
     return fallback;
@@ -2044,14 +2176,6 @@ function formatSelectedSummary(selectedValues: Array<string>, fallback: string):
   return `${selectedValues.length} selected`;
 }
 
-function formatRating(rating: number | undefined): string {
-  if (rating === undefined) {
-    return 'Not rated';
-  }
-
-  return `${rating.toFixed(1)} / 5`;
-}
-
 function formatFilterLabel(value: string): string {
   return value
     .replace(/_/g, ' ')
@@ -2062,71 +2186,75 @@ function formatFilterLabel(value: string): string {
 }
 
 const styles = StyleSheet.create({
-  accordionCard: {
-    backgroundColor: colors.card,
-    borderColor: colors.border,
-    borderRadius: 8,
-    borderWidth: 1,
-    marginBottom: 10,
-    overflow: 'hidden',
-  },
-  accordionSummary: {
+  activeChip: {
     alignItems: 'center',
+    ...componentTokens.chip,
     flexDirection: 'row',
-    gap: 10,
-    padding: 14,
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  activeChipIcon: {
+    color: colors.textSecondary,
+    fontSize: 11,
+  },
+  activeChipText: {
+    color: colors.textPrimary,
+    ...typography.caption,
+    fontWeight: '800',
+  },
+  activeChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
   },
   addButton: {
-    backgroundColor: colors.accentMuted,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  addButtonText: {
-    color: colors.textPrimary,
-    fontSize: 13,
-    fontWeight: '900',
+    ...componentTokens.primaryButton,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
   applyButton: {
     alignItems: 'center',
-    backgroundColor: colors.accentMuted,
-    borderRadius: 8,
+    ...componentTokens.primaryButton,
     justifyContent: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
   },
   applyButtonText: {
     color: colors.textPrimary,
-    fontSize: 14,
+    ...typography.button,
     fontWeight: '900',
   },
   autocompleteOption: {
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
   autocompletePanel: {
-    backgroundColor: colors.card,
-    borderColor: colors.border,
-    borderRadius: 8,
-    borderWidth: 1,
-    marginTop: 6,
-    padding: 4,
+    ...componentTokens.card,
+    marginTop: spacing.sm,
+    padding: spacing.xs,
   },
   autocompleteSubtitle: {
     color: colors.textSecondary,
-    fontSize: 12,
+    ...typography.caption,
     marginTop: 2,
   },
   autocompleteTitle: {
     color: colors.textPrimary,
-    fontSize: 14,
-    fontWeight: '800',
+    ...typography.bodyStrong,
+  },
+  catalogNotice: {
+    ...componentTokens.card,
+    backgroundColor: colors.surfacePressed,
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    padding: spacing.md,
   },
   checkbox: {
     alignItems: 'center',
     borderColor: colors.border,
-    borderRadius: 4,
+    borderRadius: radii.sm,
     borderWidth: 1,
     height: 20,
     justifyContent: 'center',
@@ -2138,130 +2266,54 @@ const styles = StyleSheet.create({
   },
   checkboxText: {
     color: colors.textPrimary,
-    fontSize: 12,
+    ...typography.caption,
     fontWeight: '900',
   },
+  compactIconButton: {
+    alignItems: 'center',
+    borderRadius: radii.sm,
+    height: 32,
+    justifyContent: 'center',
+    width: 32,
+  },
   container: {
-    backgroundColor: colors.background,
-    padding: 20,
+    ...componentTokens.screen,
     paddingBottom: 28,
   },
   controlPressed: {
     opacity: 0.78,
   },
-  controlRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 8,
-  },
   controls: {
-    gap: 12,
-    marginBottom: 16,
-  },
-  dangerButton: {
-    alignItems: 'center',
-    backgroundColor: colors.danger,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  dangerButtonText: {
-    color: colors.background,
-    fontSize: 13,
-    fontWeight: '900',
-  },
-  detailBlock: {
-    marginTop: 12,
-  },
-  detailCopy: {
-    color: colors.textSecondary,
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: 4,
-  },
-  detailLabel: {
-    color: colors.accent,
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  detailLine: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 4,
-  },
-  detailValue: {
-    color: colors.textPrimary,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  details: {
-    borderTopColor: colors.border,
-    borderTopWidth: 1,
-    padding: 14,
-    paddingTop: 12,
-  },
-  displayCard: {
-    backgroundColor: colors.card,
-    borderColor: colors.border,
-    borderRadius: 8,
-    borderWidth: 1,
-    flex: 1,
-    marginBottom: 12,
-    padding: 14,
-  },
-  displayName: {
-    color: colors.textPrimary,
-    fontSize: 16,
-    fontWeight: '800',
-    marginTop: 12,
-  },
-  displayQuantity: {
-    color: colors.textSecondary,
-    fontSize: 13,
-    marginTop: 10,
-  },
-  displayRating: {
-    color: colors.textPrimary,
-    fontSize: 12,
-    fontWeight: '700',
+    gap: spacing.md,
+    marginBottom: spacing.lg,
   },
   displayRow: {
-    gap: 12,
-  },
-  displayStatusRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    gap: spacing.md,
   },
   dropdown: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: 8,
-    borderWidth: 1,
+    ...componentTokens.secondaryButton,
     overflow: 'hidden',
   },
   dropdownButton: {
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
   },
   dropdownIcon: {
     color: colors.textPrimary,
-    fontSize: 18,
+    ...typography.sectionTitle,
     fontWeight: '900',
-    marginLeft: 12,
+    marginLeft: spacing.md,
   },
   dropdownOption: {
     alignItems: 'center',
-    borderRadius: 8,
+    borderRadius: radii.sm,
     flexDirection: 'row',
-    gap: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
+    gap: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
   dropdownOptionSelected: {
     backgroundColor: colors.highlight,
@@ -2269,21 +2321,20 @@ const styles = StyleSheet.create({
   dropdownOptionText: {
     color: colors.textPrimary,
     flex: 1,
-    fontSize: 14,
-    fontWeight: '700',
+    ...typography.bodyStrong,
   },
   dropdownOptions: {
-    gap: 4,
+    gap: spacing.xs,
   },
   dropdownPanel: {
     borderTopColor: colors.border,
     borderTopWidth: 1,
-    padding: 8,
+    padding: spacing.sm,
   },
   dropdownSummary: {
     color: colors.textSecondary,
-    fontSize: 13,
-    marginTop: 3,
+    ...typography.bodySmall,
+    marginTop: spacing.xs,
   },
   dropdownText: {
     flex: 1,
@@ -2297,9 +2348,9 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
     borderTopWidth: 1,
     flexDirection: 'row',
-    gap: 10,
+    gap: spacing.md,
     justifyContent: 'flex-end',
-    padding: 14,
+    padding: spacing.lg,
   },
   editorHeader: {
     alignItems: 'center',
@@ -2307,30 +2358,27 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
   },
   editorInput: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: 8,
-    borderWidth: 1,
-    color: colors.textPrimary,
-    fontSize: 15,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    ...componentTokens.input,
+    ...typography.body,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
   editorInputDisabled: {
     opacity: 0.62,
   },
   editorPanel: {
     backgroundColor: colors.background,
-    borderTopLeftRadius: 8,
-    borderTopRightRadius: 8,
+    borderTopLeftRadius: radii.md,
+    borderTopRightRadius: radii.md,
     maxHeight: '92%',
+    ...shadows.modal,
   },
   editorScroll: {
-    padding: 16,
+    padding: spacing.lg,
   },
   editorTextArea: {
     minHeight: 82,
@@ -2338,45 +2386,38 @@ const styles = StyleSheet.create({
   },
   editorTitle: {
     color: colors.textPrimary,
-    fontSize: 18,
+    ...typography.sectionTitle,
     fontWeight: '900',
   },
   emptyCopy: {
     color: colors.textSecondary,
-    fontSize: 14,
-    marginTop: 8,
+    ...typography.bodySmall,
+    marginTop: spacing.sm,
     textAlign: 'center',
   },
   emptyState: {
     alignItems: 'center',
-    backgroundColor: colors.card,
-    borderColor: colors.border,
-    borderRadius: 8,
-    borderWidth: 1,
-    padding: 24,
+    ...componentTokens.card,
+    padding: spacing['2xl'],
   },
   emptyTitle: {
     color: colors.textPrimary,
-    fontSize: 16,
-    fontWeight: '700',
+    ...typography.cardTitle,
   },
-  expandIcon: {
-    color: colors.textSecondary,
-    fontSize: 18,
-    fontWeight: '900',
-    textAlign: 'center',
-    width: 14,
-  },
-  expandIconOpen: {
-    transform: [{ rotate: '90deg' }],
+  feedbackText: {
+    ...componentTokens.card,
+    backgroundColor: colors.surfacePressed,
+    color: colors.textPrimary,
+    ...typography.bodySmall,
+    fontWeight: '800',
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
   filterButton: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: 8,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    ...componentTokens.secondaryButton,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
   filterButtonActive: {
     backgroundColor: colors.accentMuted,
@@ -2384,46 +2425,48 @@ const styles = StyleSheet.create({
   },
   filterButtonText: {
     color: colors.textSecondary,
-    fontSize: 13,
+    ...typography.caption,
     fontWeight: '800',
   },
   filterButtonTextActive: {
     color: colors.textPrimary,
   },
   filterPanel: {
-    gap: 12,
+    gap: spacing.md,
+    padding: spacing.lg,
+  },
+  filterSheet: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: radii.md,
+    borderTopRightRadius: radii.md,
+    maxHeight: '82%',
+    ...shadows.modal,
   },
   filterTitle: {
     color: colors.textPrimary,
-    fontSize: 14,
-    fontWeight: '800',
+    ...typography.bodyStrong,
   },
   formActionRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: spacing.sm,
   },
   formColumn: {
     flex: 1,
-    gap: 6,
+    gap: spacing.sm,
   },
   formGroup: {
-    gap: 6,
-    marginBottom: 14,
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
   },
   formLabel: {
     color: colors.accent,
-    fontSize: 12,
-    fontWeight: '800',
-    textTransform: 'uppercase',
+    ...typography.label,
   },
   formOption: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: 8,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    ...componentTokens.secondaryButton,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
   formOptionDisabled: {
     opacity: 0.55,
@@ -2434,7 +2477,7 @@ const styles = StyleSheet.create({
   },
   formOptionText: {
     color: colors.textSecondary,
-    fontSize: 13,
+    ...typography.caption,
     fontWeight: '800',
   },
   formOptionTextDisabled: {
@@ -2445,13 +2488,28 @@ const styles = StyleSheet.create({
   },
   formRow: {
     flexDirection: 'row',
-    gap: 10,
-    marginBottom: 14,
+    gap: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  formSection: {
+    ...componentTokens.card,
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+    padding: spacing.md,
   },
   formSectionHeader: {
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
+  },
+  formSectionTitle: {
+    color: colors.textPrimary,
+    ...typography.cardTitle,
+    fontWeight: '900',
+  },
+  helperText: {
+    color: colors.textSecondary,
+    ...typography.caption,
   },
   holdingAmountColumn: {
     width: 82,
@@ -2462,40 +2520,25 @@ const styles = StyleSheet.create({
   holdingRow: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: 8,
+    gap: spacing.sm,
   },
   iconButton: {
     alignItems: 'center',
-    borderRadius: 8,
+    borderRadius: radii.sm,
     height: 36,
     justifyContent: 'center',
     width: 36,
   },
-  iconButtonText: {
-    color: colors.textPrimary,
-    fontSize: 16,
-    fontWeight: '900',
-  },
-  itemActionRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 14,
-  },
-  itemName: {
-    color: colors.textPrimary,
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  itemType: {
-    color: colors.textSecondary,
-    fontSize: 13,
-    marginTop: 3,
+  moreDetailsButton: {
+    alignItems: 'center',
+    ...componentTokens.secondaryButton,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
   optionRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: spacing.sm,
   },
   pageHeader: {
     alignItems: 'center',
@@ -2504,26 +2547,25 @@ const styles = StyleSheet.create({
   },
   pageSubtitle: {
     color: colors.textSecondary,
-    fontSize: 14,
-    marginTop: 4,
+    ...typography.bodySmall,
+    marginTop: spacing.xs,
   },
   pageTitle: {
     color: colors.textPrimary,
-    fontSize: 28,
-    fontWeight: '800',
+    ...typography.screenTitle,
   },
   photoPreview: {
     backgroundColor: colors.surface,
-    borderRadius: 8,
+    borderRadius: radii.sm,
     height: 120,
     width: 120,
   },
   radioMark: {
     borderColor: colors.border,
-    borderRadius: 10,
+    borderRadius: radii.pill,
     borderWidth: 1,
     color: colors.textPrimary,
-    fontSize: 8,
+    ...typography.caption,
     height: 20,
     lineHeight: 18,
     textAlign: 'center',
@@ -2533,98 +2575,120 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accentMuted,
     borderColor: colors.accentMuted,
   },
-  ratingText: {
-    color: colors.textPrimary,
-    fontSize: 13,
-    fontWeight: '800',
+  ratingPicker: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  searchBox: {
+    alignItems: 'center',
+    ...componentTokens.input,
+    flex: 1,
+    flexDirection: 'row',
+    paddingHorizontal: spacing.md,
+  },
+  searchIcon: {
+    color: colors.textSecondary,
+    ...typography.caption,
   },
   searchInput: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: 8,
-    borderWidth: 1,
     color: colors.textPrimary,
-    fontSize: 15,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    flex: 1,
+    ...typography.body,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  searchToolbar: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
   },
   secondaryButton: {
     alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: 8,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    ...componentTokens.secondaryButton,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
   secondaryButtonText: {
     color: colors.textPrimary,
-    fontSize: 13,
+    ...typography.caption,
     fontWeight: '900',
   },
   segmentButton: {
-    borderRadius: 7,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
   segmentButtonActive: {
     backgroundColor: colors.accentMuted,
   },
   segmentButtonText: {
     color: colors.textSecondary,
-    fontSize: 13,
+    ...typography.caption,
     fontWeight: '800',
   },
   segmentButtonTextActive: {
     color: colors.textPrimary,
   },
-  statusIcon: {
+  smallInlineButton: {
     alignItems: 'center',
-    borderRadius: 14,
-    height: 28,
-    justifyContent: 'center',
-    width: 28,
+    ...componentTokens.secondaryButton,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
-  statusIconText: {
-    color: colors.background,
-    fontSize: 16,
+  smallInlineButtonText: {
+    color: colors.textPrimary,
+    ...typography.caption,
     fontWeight: '900',
   },
-  statusIn: {
-    backgroundColor: colors.success,
+  starButton: {
+    alignItems: 'center',
+    borderRadius: radii.sm,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
   },
-  statusLow: {
-    backgroundColor: colors.warning,
-  },
-  statusOut: {
-    backgroundColor: colors.danger,
-  },
-  summaryBadge: {
-    borderColor: colors.border,
-    borderRadius: 999,
-    borderWidth: 1,
+  starEmpty: {
     color: colors.textSecondary,
-    fontSize: 11,
-    fontWeight: '800',
-    paddingHorizontal: 7,
-    paddingVertical: 3,
+    ...typography.sectionTitle,
   },
-  summaryBadges: {
+  starSelected: {
+    color: colors.warning,
+    ...typography.sectionTitle,
+  },
+  totalText: {
+    color: colors.textPrimary,
+    ...typography.caption,
+    fontWeight: '900',
+  },
+  utilityRow: {
+    alignItems: 'center',
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 5,
-    marginTop: 7,
-  },
-  summaryText: {
-    flex: 1,
+    gap: spacing.sm,
   },
   viewToggle: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: 8,
-    borderWidth: 1,
+    ...componentTokens.secondaryButton,
     flexDirection: 'row',
     padding: 3,
+  },
+  visibilityHelper: {
+    color: colors.textSecondary,
+    ...typography.caption,
+    marginTop: spacing.sm,
+    maxWidth: 280,
+  },
+  visibilityOption: {
+    ...componentTokens.secondaryButton,
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    width: '100%',
+  },
+  visibilityOptionHelper: {
+    color: colors.textSecondary,
+    ...typography.caption,
   },
 });
 

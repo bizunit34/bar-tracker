@@ -5,7 +5,7 @@ React Native + TypeScript app for managing a local-first home bar inventory, pre
 ## What The App Does
 
 - Tracks inventory items across spirits, liqueurs, wine, beer, mixers, bitters, syrups, juices, garnishes, tools, glassware, and other bar items.
-- Supports add, edit, archive, restore, permanent delete with confirmation, duplicate, open/unopened toggles, search, filters, sorting, and low-detail inventory cards.
+- Supports add, edit, archive, restore, permanent delete with confirmation, duplicate, open/unopened toggles, guest-visibility cycling, search, filters, sorting, and low-detail inventory cards.
 - Stores local inventory, share settings, locally created share-link management records, saved recipes, tool data, and catalog data in the local SQLite database.
 - Imports and exports inventory backup data as JSON and CSV.
 - Manages tools and glassware as normal inventory records with specialized checklist-style screens.
@@ -56,11 +56,12 @@ Use the deployed API base URL for Render or another hosted backend.
 ## Navigation Map
 
 - **Home**
-  - Inventory overview and summary stats.
-  - Category counts.
-  - Recently updated items.
-  - Entry point to Tools & Glassware.
-  - Active inventory list.
+  - Daily-use dashboard for quick bar decisions.
+  - Primary actions for Add Item, Share My Bar, Tools & Glassware, and Import / Export.
+  - Inventory summary for active items, spirits, mixers/garnishes, tools/glassware, and guest-visible items.
+  - Guest sharing status with Preview Guest View, Manage Sharing, and Copy Latest Link when available.
+  - Recently updated items with quick open/archive/edit actions.
+  - Category count chips that jump into Bar filtered by category.
 
 - **Bar**
   - Full inventory manager.
@@ -68,29 +69,37 @@ Use the deployed API base URL for Render or another hosted backend.
   - Duplicate items.
   - Toggle open/unopened.
   - Cycle visibility between Private, Shared, and Guest Visible.
-  - Search, filter, sort, active/archived views, and list/display modes.
+  - Always-visible search, compact active filter chips, filter/sort sheet, active/archived views, and list/display modes.
+  - Scannable list rows and display cards with stock, rating, visibility, and archived status badges.
+  - Secondary item actions are grouped in an overflow action sheet so rows stay compact.
+  - Add/Edit is organized around basics, stock, rating/notes, sharing, photo, and advanced details.
+  - Tools & Glassware and Import / Export are available from the Bar controls.
+
+- **Share**
+  - Sharing hub for guest-safe previews and public link creation.
+  - Shows guest-visible item count, sharing settings summary, latest-link actions, and guest preview.
+  - Links to Manage Sharing, Share Links, and Bar setup.
 
 - **Recipes**
-  - Saved recipe and recommendation workspace currently present in the app.
+  - Secondary saved recipe and recommendation workspace currently present in the app.
   - Uses local inventory and tool context.
 
-- **Shopping Cart**
-  - Placeholder route for future shopping workflow.
+- **More**
+  - Groups secondary utilities so the main navigation stays focused.
+  - Bar Setup: Tools & Glassware, Import / Export.
+  - Sharing: Manage Sharing, Share Links.
+  - Future: Shopping Cart, Connected Bars.
 
 - **Tools & Glassware**
   - Checklist-style management for common bar tools and glassware.
   - Creates/restores inventory items only when selected.
   - Supports custom tools and glassware.
+  - Accessible from Home, Bar, and More.
 
 - **Import / Export**
   - Export inventory as JSON or CSV.
   - Parse and preview JSON/CSV imports.
-  - Import with duplicate protection.
-
-- **Share**
-  - Local guest-safe share preview.
-  - Create backend public share links from sanitized guest-safe data only.
-  - Preview/share/disable the most recently created link.
+  - Import with duplicate protection and clear safe-default copy.
 
 - **Share Links**
   - Local owner-side management for links created on this device.
@@ -103,19 +112,36 @@ Use the deployed API base URL for Render or another hosted backend.
 - **Connected Bars**
   - Placeholder route for future multi-bar/account functionality.
 
+- **Shopping Cart**
+  - Placeholder route for future shopping workflow.
+
 ## Project Structure
 
 - `src/App.tsx`: App shell and route map.
 - `src/catalog/`: Local catalog import, normalization, SQLite schema, seed loading, and repository logic.
 - `src/components/`: Shared inventory list components.
+- `src/components/bar/`: Bar-specific row/card, action sheet, badge, icon, and empty-state components.
 - `src/config/api.ts`: API base URL configuration.
 - `src/data/`: Local repositories, stores, inventory transfer helpers, share settings, share links, and guest-safe mapping.
 - `src/features/recipes/`: Recipe-related local data, hooks, AI prompt plumbing, and recommendation helpers.
 - `src/screens/`: Route-level UI screens.
 - `src/services/`: API service clients.
-- `src/theme/`: Shared colors.
+- `src/theme/`: Shared design tokens for palette, colors, typography, spacing, radii, shadows, component patterns, and semantic status tones.
 - `src/types/`: Shared TypeScript models.
 - `src/generated/catalog.seed.json`: Bundled catalog seed generated by `bar-scripts`.
+
+## Visual Theme
+
+The app uses React Native TypeScript theme tokens instead of global CSS. There is no CSS pipeline in this native app, so `src/theme/tokens.ts` and the files it exports are the source of truth.
+
+- Use `src/theme` exports instead of hardcoded hex values, one-off font sizes, or custom spacing.
+- Add raw colors only in `src/theme/palette.ts`, then expose them through semantic roles in `src/theme/colors.ts`.
+- Use typography roles from `src/theme/typography.ts` for screen titles, section titles, body text, labels, captions, and buttons.
+- Use `spacing`, `radii`, `shadows`, and `componentTokens` for cards, buttons, chips, inputs, modals, and action sheets.
+- Use semantic helpers such as `getStockStatusTone` and `getVisibilityTone` for badges. Badges should always include text labels, not color alone.
+- Primary actions use the amber `primary` tone, secondary actions use raised neutral surfaces, and destructive actions use the red `danger` tone.
+
+The current palette is a warm premium dark theme with espresso surfaces, cream/sand text, amber primary actions, copper secondary accents, sage success, gold warning, blue info, and red danger. Text and controls were chosen to keep normal text and important UI boundaries readable on dark surfaces.
 
 ## Catalog Seed Updates
 

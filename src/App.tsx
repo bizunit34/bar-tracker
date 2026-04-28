@@ -31,30 +31,26 @@ import { colors } from './theme/colors';
 type RouteName =
   | 'Home'
   | 'Bar'
+  | 'Share'
   | 'Recipes'
+  | 'More'
   | 'Shopping Cart'
   | 'Tools & Glassware'
   | 'Import / Export'
-  | 'Share'
   | 'Share Links'
   | 'Manage Sharing'
   | 'Connected Bars';
 
-const routes: Array<RouteName> = [
-  'Home',
-  'Bar',
-  'Recipes',
-  'Shopping Cart',
-  'Tools & Glassware',
-  'Import / Export',
-  'Share',
-  'Share Links',
-  'Manage Sharing',
-  'Connected Bars',
-];
+const routes: Array<RouteName> = ['Home', 'Bar', 'Share', 'Recipes', 'More'];
 
 function App(): React.JSX.Element {
   const [activeRoute, setActiveRoute] = useState<RouteName>('Home');
+  const [barInitialCategory, setBarInitialCategory] = useState<string | null>(null);
+  const [barEditRequest, setBarEditRequest] = useState<{ itemId: string | null; request: number }>({
+    itemId: null,
+    request: 0,
+  });
+  const [barOpenAddRequest, setBarOpenAddRequest] = useState<number>(0);
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
 
   useEffect((): void => {
@@ -74,6 +70,29 @@ function App(): React.JSX.Element {
     setIsMenuOpen(false);
   };
 
+  const navigateToBar = (
+    options: { category?: string; editItemId?: string; openAdd?: boolean } = {},
+  ): void => {
+    setBarInitialCategory(options.category ?? null);
+
+    if (options.openAdd) {
+      setBarOpenAddRequest((currentRequest: number): number => {
+        return currentRequest + 1;
+      });
+    }
+
+    if (options.editItemId) {
+      setBarEditRequest((currentRequest): { itemId: string | null; request: number } => {
+        return {
+          itemId: options.editItemId ?? null,
+          request: currentRequest.request + 1,
+        };
+      });
+    }
+
+    navigateToRoute('Bar');
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" />
@@ -84,7 +103,14 @@ function App(): React.JSX.Element {
           }}
         />
         <View style={styles.content}>
-          <ActiveScreen onNavigate={navigateToRoute} route={activeRoute} />
+          <ActiveScreen
+            barEditRequest={barEditRequest}
+            barInitialCategory={barInitialCategory}
+            barOpenAddRequest={barOpenAddRequest}
+            onNavigate={navigateToRoute}
+            onNavigateToBar={navigateToBar}
+            route={activeRoute}
+          />
         </View>
       </View>
       <NavigationMenu
@@ -181,23 +207,69 @@ type SimplePageProps = {
 };
 
 type ActiveScreenProps = {
+  barEditRequest: { itemId: string | null; request: number };
+  barInitialCategory: string | null;
+  barOpenAddRequest: number;
   onNavigate: (route: RouteName) => void;
+  onNavigateToBar: (options?: {
+    category?: string;
+    editItemId?: string;
+    openAdd?: boolean;
+  }) => void;
   route: RouteName;
 };
 
-function ActiveScreen({ onNavigate, route }: ActiveScreenProps): React.JSX.Element {
+function ActiveScreen({
+  barEditRequest,
+  barInitialCategory,
+  barOpenAddRequest,
+  onNavigate,
+  onNavigateToBar,
+  route,
+}: ActiveScreenProps): React.JSX.Element {
   if (route === 'Home') {
     return (
       <InventoryScreen
+        onAddItem={(): void => {
+          onNavigateToBar({ openAdd: true });
+        }}
+        onImportExport={(): void => {
+          onNavigate('Import / Export');
+        }}
+        onEditItem={(itemId: string): void => {
+          onNavigateToBar({ editItemId: itemId });
+        }}
         onManageEquipment={(): void => {
           onNavigate('Tools & Glassware');
+        }}
+        onManageSharing={(): void => {
+          onNavigate('Manage Sharing');
+        }}
+        onPreviewShare={(): void => {
+          onNavigate('Share');
+        }}
+        onSelectCategory={(category: string): void => {
+          onNavigateToBar({ category });
         }}
       />
     );
   }
 
   if (route === 'Bar') {
-    return <BarScreen />;
+    return (
+      <BarScreen
+        editItemId={barEditRequest.itemId}
+        editItemRequest={barEditRequest.request}
+        initialCategory={barInitialCategory}
+        openAddRequest={barOpenAddRequest}
+        onManageEquipment={(): void => {
+          onNavigate('Tools & Glassware');
+        }}
+        onOpenImportExport={(): void => {
+          onNavigate('Import / Export');
+        }}
+      />
+    );
   }
 
   if (route === 'Recipes') {
@@ -215,11 +287,21 @@ function ActiveScreen({ onNavigate, route }: ActiveScreenProps): React.JSX.Eleme
   if (route === 'Share') {
     return (
       <SharePreviewScreen
+        onManageLinks={(): void => {
+          onNavigate('Share Links');
+        }}
         onManageSharing={(): void => {
           onNavigate('Manage Sharing');
         }}
+        onOpenBar={(): void => {
+          onNavigateToBar();
+        }}
       />
     );
+  }
+
+  if (route === 'More') {
+    return <MoreScreen onNavigate={onNavigate} />;
   }
 
   if (route === 'Share Links') {
@@ -249,6 +331,77 @@ function SimplePage({ title }: SimplePageProps): React.JSX.Element {
   return (
     <View style={styles.simplePage}>
       <Text style={styles.simplePageTitle}>{title}</Text>
+      <Text style={styles.simplePageCopy}>
+        This area is planned for a later pass. The current bar tracking, sharing, tools, import, and
+        recipe features are available from Home, Bar, Share, Recipes, and More.
+      </Text>
+    </View>
+  );
+}
+
+function MoreScreen({ onNavigate }: { onNavigate: (route: RouteName) => void }): React.JSX.Element {
+  return (
+    <View style={styles.moreScreen}>
+      <Text style={styles.simplePageTitle}>More</Text>
+      <Text style={styles.simplePageCopy}>
+        Setup tools, sharing utilities, imports, exports, and future workflows.
+      </Text>
+      <MoreSection
+        items={[
+          { label: 'Tools & Glassware', route: 'Tools & Glassware' },
+          { label: 'Import / Export', route: 'Import / Export' },
+        ]}
+        title="Bar Setup"
+        onNavigate={onNavigate}
+      />
+      <MoreSection
+        items={[
+          { label: 'Manage Sharing', route: 'Manage Sharing' },
+          { label: 'Share Links', route: 'Share Links' },
+        ]}
+        title="Sharing"
+        onNavigate={onNavigate}
+      />
+      <MoreSection
+        items={[
+          { label: 'Shopping Cart', route: 'Shopping Cart' },
+          { label: 'Connected Bars', route: 'Connected Bars' },
+        ]}
+        title="Future"
+        onNavigate={onNavigate}
+      />
+    </View>
+  );
+}
+
+function MoreSection({
+  items,
+  onNavigate,
+  title,
+}: {
+  items: Array<{ label: string; route: RouteName }>;
+  onNavigate: (route: RouteName) => void;
+  title: string;
+}): React.JSX.Element {
+  return (
+    <View style={styles.moreSection}>
+      <Text style={styles.moreSectionTitle}>{title}</Text>
+      {items.map((item): React.JSX.Element => {
+        return (
+          <Pressable
+            accessibilityRole="button"
+            key={item.route}
+            onPress={(): void => {
+              onNavigate(item.route);
+            }}
+            style={({ pressed }): StyleProp<ViewStyle> => {
+              return [styles.moreItem, pressed ? styles.menuItemPressed : null];
+            }}
+          >
+            <Text style={styles.moreItemText}>{item.label}</Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -326,13 +479,45 @@ const styles = StyleSheet.create({
     minWidth: 220,
     padding: 8,
   },
+  moreItem: {
+    backgroundColor: colors.card,
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    padding: 14,
+  },
+  moreItemText: {
+    color: colors.textPrimary,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  moreScreen: {
+    flex: 1,
+    gap: 16,
+    padding: 20,
+  },
+  moreSection: {
+    gap: 10,
+  },
+  moreSectionTitle: {
+    color: colors.accent,
+    fontSize: 13,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+  },
   safeArea: {
     backgroundColor: colors.background,
     flex: 1,
   },
   simplePage: {
     flex: 1,
+    gap: 10,
     padding: 20,
+  },
+  simplePageCopy: {
+    color: colors.textSecondary,
+    fontSize: 15,
+    lineHeight: 22,
   },
   simplePageTitle: {
     color: colors.textPrimary,

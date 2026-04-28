@@ -1,58 +1,70 @@
-import React, { useMemo } from 'react';
-import { Pressable, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
+import Clipboard from '@react-native-clipboard/clipboard';
+import React, { useMemo, useState } from 'react';
+import { Pressable, ScrollView, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 
-import InventoryList from '../components/InventoryList';
-import { useBarInventoryItems } from '../data/barInventoryStore';
+import {
+  archiveBarInventoryItem,
+  saveBarInventoryItem,
+  useBarInventoryItems,
+} from '../data/barInventoryStore';
+import { useBarShareSettings } from '../data/barShareSettingsStore';
+import { mapInventoryToGuestVisibleItems } from '../data/guestInventoryMapping';
+import { useLocalShareLinks } from '../data/localShareLinkStore';
 import { colors } from '../theme/colors';
 import { InventoryCategory, InventoryItem } from '../types/inventory';
+import { LocalShareLinkRecord } from '../types/shareLinks';
 
 type InventoryScreenProps = {
-  onManageEquipment?: () => void;
+  onAddItem: () => void;
+  onEditItem: (itemId: string) => void;
+  onImportExport: () => void;
+  onManageEquipment: () => void;
+  onManageSharing: () => void;
+  onPreviewShare: () => void;
+  onSelectCategory: (category: InventoryCategory) => void;
 };
 
-function InventoryScreen({ onManageEquipment }: InventoryScreenProps): React.JSX.Element {
+type CategoryCount = {
+  category: InventoryCategory;
+  count: number;
+};
+
+function InventoryScreen({
+  onAddItem,
+  onEditItem,
+  onImportExport,
+  onManageEquipment,
+  onManageSharing,
+  onPreviewShare,
+  onSelectCategory,
+}: InventoryScreenProps): React.JSX.Element {
   const items = useBarInventoryItems();
-  const visibleItems = useMemo((): Array<InventoryItem> => {
+  const shareSettings = useBarShareSettings();
+  const shareLinks = useLocalShareLinks();
+  const [copyMessage, setCopyMessage] = useState<string | null>(null);
+  const activeItems = useMemo((): Array<InventoryItem> => {
     return items.filter((item: InventoryItem): boolean => {
       return !item.isArchived;
     });
   }, [items]);
-
-  const stats = useMemo(() => {
-    const totalItems = visibleItems.length;
-    const lowStockItems = visibleItems.filter((item: InventoryItem): boolean => {
-      return item.quantity <= item.minStock;
-    }).length;
-    const stockedItems = totalItems - lowStockItems;
-    const categories = Array.from(
-      new Set(
-        visibleItems.map((item: InventoryItem): string => {
-          return item.category;
-        }),
-      ),
-    ).length;
-
-    return {
-      totalItems,
-      lowStockItems,
-      stockedItems,
-      categories,
-    };
-  }, [visibleItems]);
-  const recentItems = useMemo((): Array<InventoryItem> => {
-    return [...visibleItems]
-      .sort((left: InventoryItem, right: InventoryItem): number => {
-        return (
-          parseDateValue(right.updatedAt ?? right.createdAt) -
-          parseDateValue(left.updatedAt ?? left.createdAt)
-        );
-      })
-      .slice(0, 3);
-  }, [visibleItems]);
+  const guestVisibleItems = useMemo(() => {
+    return mapInventoryToGuestVisibleItems(items, shareSettings);
+  }, [items, shareSettings]);
+  const latestShareLink = useMemo((): LocalShareLinkRecord | null => {
+    return (
+      shareLinks
+        .filter((link: LocalShareLinkRecord): boolean => {
+          return !link.disabledAt;
+        })
+        .sort((left: LocalShareLinkRecord, right: LocalShareLinkRecord): number => {
+          return parseDateValue(right.updatedAt) - parseDateValue(left.updatedAt);
+        })[0] ?? null
+    );
+  }, [shareLinks]);
   const categoryCounts = useMemo((): Array<CategoryCount> => {
     const counts = new Map<InventoryCategory, number>();
 
-    visibleItems.forEach((item: InventoryItem): void => {
+    activeItems.forEach((item: InventoryItem): void => {
       counts.set(item.category, (counts.get(item.category) ?? 0) + 1);
     });
 
@@ -63,139 +75,233 @@ function InventoryScreen({ onManageEquipment }: InventoryScreenProps): React.JSX
       .sort((left: CategoryCount, right: CategoryCount): number => {
         return formatLabel(left.category).localeCompare(formatLabel(right.category));
       });
-  }, [visibleItems]);
+  }, [activeItems]);
+  const recentItems = useMemo((): Array<InventoryItem> => {
+    return [...activeItems]
+      .sort((left: InventoryItem, right: InventoryItem): number => {
+        return (
+          parseDateValue(right.updatedAt ?? right.createdAt) -
+          parseDateValue(left.updatedAt ?? left.createdAt)
+        );
+      })
+      .slice(0, 4);
+  }, [activeItems]);
+  const stats = useMemo(() => {
+    const spirits = activeItems.filter((item: InventoryItem): boolean => {
+      return item.category === 'spirit' || item.category === 'liqueur';
+    }).length;
+    const mixersAndGarnishes = activeItems.filter((item: InventoryItem): boolean => {
+      return ['mixer', 'bitters', 'syrup', 'juice', 'garnish'].includes(item.category);
+    }).length;
+    const equipment = activeItems.filter((item: InventoryItem): boolean => {
+      return item.category === 'tool' || item.category === 'glassware';
+    }).length;
+
+    return {
+      equipment,
+      guestVisible: guestVisibleItems.length,
+      mixersAndGarnishes,
+      spirits,
+      total: activeItems.length,
+    };
+  }, [activeItems, guestVisibleItems.length]);
+
+  const copyLatestLink = (): void => {
+    if (!latestShareLink) {
+      return;
+    }
+
+    Clipboard.setString(latestShareLink.shareUrl);
+    setCopyMessage('Latest link copied.');
+  };
+
+  const toggleOpen = (item: InventoryItem): void => {
+    saveBarInventoryItem({
+      ...item,
+      isOpen: !item.isOpen,
+      updatedAt: new Date().toISOString(),
+    });
+  };
 
   return (
-    <InventoryList
-      items={visibleItems}
-      contentContainerStyle={styles.container}
-      ListHeaderComponent={
-        <InventoryHeader
-          categoryCounts={categoryCounts}
-          onManageEquipment={onManageEquipment}
-          recentItems={recentItems}
-          stats={stats}
-        />
-      }
-    />
-  );
-}
-
-type CategoryCount = {
-  category: InventoryCategory;
-  count: number;
-};
-
-type InventoryStats = {
-  categories: number;
-  lowStockItems: number;
-  stockedItems: number;
-  totalItems: number;
-};
-
-type InventoryHeaderProps = {
-  categoryCounts: Array<CategoryCount>;
-  onManageEquipment?: () => void;
-  recentItems: Array<InventoryItem>;
-  stats: InventoryStats;
-};
-
-function InventoryHeader({
-  categoryCounts,
-  onManageEquipment,
-  recentItems,
-  stats,
-}: InventoryHeaderProps): React.JSX.Element {
-  return (
-    <>
+    <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Bar Tracker</Text>
-        <Text style={styles.subtitle}>Keep every spirit, mixer, and garnish in check.</Text>
+        <Text style={styles.title}>Home Bar Command Center</Text>
+        <Text style={styles.subtitle}>
+          Track stock, prep your guest view, and jump into common tasks.
+        </Text>
       </View>
 
-      <View style={styles.statGrid}>
-        <StatBlock label="Total items" value={stats.totalItems} />
-        <StatBlock label="Stocked" value={stats.stockedItems} />
-        <StatBlock label="Needs attention" value={stats.lowStockItems} tone="warning" />
-        <StatBlock label="Categories" value={stats.categories} />
-      </View>
-
-      {onManageEquipment ? (
-        <View style={styles.actionRow}>
-          <Pressable
-            accessibilityRole="button"
-            onPress={onManageEquipment}
-            style={({ pressed }): StyleProp<ViewStyle> => {
-              return [styles.actionButton, pressed ? styles.actionButtonPressed : null];
-            }}
-          >
-            <Text style={styles.actionButtonText}>Tools & Glassware</Text>
-          </Pressable>
+      {activeItems.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyTitle}>Set up your bar</Text>
+          <Text style={styles.emptyCopy}>
+            Add your first bottle, import an existing list, or start with tools and glassware.
+          </Text>
+          <View style={styles.actionGrid}>
+            <ActionCard label="Add First Item" onPress={onAddItem} />
+            <ActionCard label="Import Inventory" onPress={onImportExport} />
+            <ActionCard label="Tools & Glassware" onPress={onManageEquipment} />
+          </View>
         </View>
       ) : null}
 
-      {categoryCounts.length > 0 ? (
-        <View style={styles.summarySection}>
-          <Text style={styles.sectionTitle}>Category Counts</Text>
-          <View style={styles.categoryGrid}>
-            {categoryCounts.map((categoryCount: CategoryCount): React.JSX.Element => {
+      <View style={styles.actionGrid}>
+        <ActionCard label="Add Item" onPress={onAddItem} />
+        <ActionCard label="Share My Bar" onPress={onPreviewShare} />
+        <ActionCard label="Tools & Glassware" onPress={onManageEquipment} />
+        <ActionCard label="Import / Export" onPress={onImportExport} />
+      </View>
+
+      <View style={styles.statsGrid}>
+        <StatCard label="Active Items" value={stats.total} />
+        <StatCard label="Spirits" value={stats.spirits} />
+        <StatCard label="Mixers & Garnish" value={stats.mixersAndGarnishes} />
+        <StatCard label="Tools & Glassware" value={stats.equipment} />
+        <StatCard label="Guest Visible" value={stats.guestVisible} />
+      </View>
+
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Guest Sharing</Text>
+          <Text style={styles.statusText}>{stats.guestVisible} item(s)</Text>
+        </View>
+        <Text style={styles.helperText}>
+          {shareSettings.title} {latestShareLink ? `· Latest link: ${latestShareLink.title}` : ''}
+        </Text>
+        <View style={styles.actionRow}>
+          <SmallButton label="Preview Guest View" onPress={onPreviewShare} />
+          <SmallButton label="Manage Sharing" onPress={onManageSharing} />
+          {latestShareLink ? (
+            <SmallButton label="Copy Latest Link" onPress={copyLatestLink} />
+          ) : null}
+        </View>
+        {copyMessage ? <Text style={styles.successText}>{copyMessage}</Text> : null}
+      </View>
+
+      {recentItems.length > 0 ? (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Recently Updated</Text>
+          <View style={styles.recentList}>
+            {recentItems.map((item: InventoryItem): React.JSX.Element => {
               return (
-                <View key={categoryCount.category} style={styles.categoryPill}>
-                  <Text style={styles.categoryPillText}>
-                    {formatLabel(categoryCount.category)} ({categoryCount.count})
-                  </Text>
-                </View>
+                <RecentItem
+                  item={item}
+                  key={item.id}
+                  onArchive={(): void => {
+                    archiveBarInventoryItem(item.id);
+                  }}
+                  onEdit={(): void => {
+                    onEditItem(item.id);
+                  }}
+                  onToggleOpen={(): void => {
+                    toggleOpen(item);
+                  }}
+                />
               );
             })}
           </View>
         </View>
       ) : null}
 
-      {recentItems.length > 0 ? (
-        <View style={styles.summarySection}>
-          <Text style={styles.sectionTitle}>Recently Updated</Text>
-          <View style={styles.recentList}>
-            {recentItems.map((item: InventoryItem): React.JSX.Element => {
-              return <RecentItem item={item} key={item.id} />;
+      {categoryCounts.length > 0 ? (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Category Counts</Text>
+          <View style={styles.categoryGrid}>
+            {categoryCounts.map((categoryCount: CategoryCount): React.JSX.Element => {
+              return (
+                <Pressable
+                  accessibilityRole="button"
+                  key={categoryCount.category}
+                  onPress={(): void => {
+                    onSelectCategory(categoryCount.category);
+                  }}
+                  style={({ pressed }): StyleProp<ViewStyle> => {
+                    return [styles.categoryPill, pressed ? styles.pressed : null];
+                  }}
+                >
+                  <Text style={styles.categoryPillText}>
+                    {formatLabel(categoryCount.category)} ({categoryCount.count})
+                  </Text>
+                </Pressable>
+              );
             })}
           </View>
         </View>
       ) : null}
-
-      <Text style={styles.sectionTitle}>Inventory</Text>
-    </>
+    </ScrollView>
   );
 }
 
-type StatBlockProps = {
-  label: string;
-  value: number;
-  tone?: 'default' | 'warning';
-};
+function ActionCard({ label, onPress }: { label: string; onPress: () => void }): React.JSX.Element {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }): StyleProp<ViewStyle> => {
+        return [styles.actionCard, pressed ? styles.pressed : null];
+      }}
+    >
+      <Text style={styles.actionCardText}>{label}</Text>
+    </Pressable>
+  );
+}
 
-function StatBlock({ label, value, tone = 'default' }: StatBlockProps): React.JSX.Element {
-  const badgeStyle = tone === 'warning' ? styles.statBadgeWarning : styles.statBadgeDefault;
-
+function StatCard({ label, value }: { label: string; value: number }): React.JSX.Element {
   return (
     <View style={styles.statCard}>
-      <View style={[styles.statBadge, badgeStyle]}>
-        <Text style={styles.statValue}>{value}</Text>
-      </View>
+      <Text style={styles.statValue}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
     </View>
   );
 }
 
-function RecentItem({ item }: { item: InventoryItem }): React.JSX.Element {
+function SmallButton({
+  label,
+  onPress,
+}: {
+  label: string;
+  onPress: () => void;
+}): React.JSX.Element {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }): StyleProp<ViewStyle> => {
+        return [styles.smallButton, pressed ? styles.pressed : null];
+      }}
+    >
+      <Text style={styles.smallButtonText}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function RecentItem({
+  item,
+  onArchive,
+  onEdit,
+  onToggleOpen,
+}: {
+  item: InventoryItem;
+  onArchive: () => void;
+  onEdit: () => void;
+  onToggleOpen: () => void;
+}): React.JSX.Element {
   return (
     <View style={styles.recentItem}>
       <View style={styles.recentItemCopy}>
         <Text style={styles.recentItemName}>{item.name}</Text>
         <Text style={styles.recentItemMeta}>
-          {[item.brand, formatLabel(item.category)].filter(Boolean).join(' · ')}
+          {[item.brand, formatLabel(item.category), formatLabel(item.visibility ?? 'private')]
+            .filter(Boolean)
+            .join(' · ')}
         </Text>
       </View>
-      <Text style={styles.recentItemStatus}>{formatLabel(item.visibility ?? 'private')}</Text>
+      <View style={styles.recentActions}>
+        <SmallButton label={item.isOpen ? 'Unopen' : 'Open'} onPress={onToggleOpen} />
+        <SmallButton label="Edit" onPress={onEdit} />
+        <SmallButton label="Archive" onPress={onArchive} />
+      </View>
     </View>
   );
 }
@@ -216,24 +322,27 @@ function formatLabel(value: string): string {
 }
 
 const styles = StyleSheet.create({
-  actionButton: {
-    alignItems: 'center',
+  actionCard: {
     backgroundColor: colors.accent,
     borderRadius: 8,
-    marginTop: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    width: '48%',
   },
-  actionButtonPressed: {
-    opacity: 0.75,
-  },
-  actionButtonText: {
+  actionCardText: {
     color: colors.background,
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: '900',
+  },
+  actionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
   },
   actionRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
   },
   categoryGrid: {
     flexDirection: 'row',
@@ -256,27 +365,57 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: colors.background,
     flexGrow: 1,
+    gap: 16,
     padding: 20,
   },
-  header: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 20,
+  emptyCopy: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    lineHeight: 20,
   },
-  recentItem: {
-    alignItems: 'center',
+  emptyState: {
     backgroundColor: colors.card,
     borderColor: colors.border,
     borderRadius: 8,
     borderWidth: 1,
+    gap: 12,
+    padding: 16,
+  },
+  emptyTitle: {
+    color: colors.textPrimary,
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  header: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    padding: 18,
+  },
+  helperText: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  pressed: {
+    opacity: 0.75,
+  },
+  recentActions: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 6,
+    justifyContent: 'flex-end',
+  },
+  recentItem: {
+    backgroundColor: colors.card,
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 10,
     padding: 12,
   },
   recentItemCopy: {
-    flex: 1,
     gap: 3,
   },
   recentItemMeta: {
@@ -286,79 +425,89 @@ const styles = StyleSheet.create({
   },
   recentItemName: {
     color: colors.textPrimary,
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '800',
-  },
-  recentItemStatus: {
-    color: colors.accent,
-    fontSize: 12,
-    fontWeight: '800',
-    marginLeft: 10,
   },
   recentList: {
     gap: 8,
   },
+  section: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 10,
+    padding: 14,
+  },
+  sectionHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
   sectionTitle: {
     color: colors.textPrimary,
     fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 12,
-    marginTop: 20,
+    fontWeight: '900',
   },
-  statBadge: {
+  smallButton: {
     alignItems: 'center',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    width: '100%',
+    backgroundColor: colors.card,
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
   },
-  statBadgeDefault: {
-    backgroundColor: colors.highlight,
-  },
-  statBadgeWarning: {
-    backgroundColor: colors.warning,
+  smallButtonText: {
+    color: colors.textPrimary,
+    fontSize: 12,
+    fontWeight: '800',
   },
   statCard: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.card,
     borderColor: colors.border,
-    borderRadius: 14,
+    borderRadius: 8,
     borderWidth: 1,
-    padding: 16,
-    width: '48%',
-  },
-  statGrid: {
-    columnGap: 12,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: 16,
-    rowGap: 12,
+    padding: 12,
+    width: '31%',
   },
   statLabel: {
     color: colors.textSecondary,
-    fontSize: 13,
-    marginTop: 8,
-    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 4,
   },
   statValue: {
     color: colors.textPrimary,
-    fontSize: 20,
-    fontWeight: '800',
-    textAlign: 'center',
+    fontSize: 22,
+    fontWeight: '900',
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  statusText: {
+    color: colors.accent,
+    fontSize: 13,
+    fontWeight: '900',
   },
   subtitle: {
     color: colors.textSecondary,
     fontSize: 15,
+    lineHeight: 22,
     marginTop: 6,
   },
-  summarySection: {
-    gap: 10,
-    marginTop: 18,
+  successText: {
+    color: colors.success,
+    fontSize: 13,
+    fontWeight: '800',
   },
   title: {
     color: colors.textPrimary,
     fontSize: 28,
-    fontWeight: '800',
-    letterSpacing: 0.4,
+    fontWeight: '900',
   },
 });
 
