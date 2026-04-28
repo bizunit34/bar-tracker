@@ -1,38 +1,140 @@
-# Bar Tracker
+# Bar Tracker Mobile App
 
-React Native + TypeScript starter for managing a bar inventory (spirits, mixers, garnish, tools).
+React Native + TypeScript app for managing a local-first home bar inventory, preparing guest-safe share snapshots, and optionally creating public share links through the Bar Tracker API.
 
-## Getting started
+## What The App Does
 
-- Install prerequisites for React Native (Node 18+, Xcode for iOS, Android SDK/Java for Android, Watchman on macOS).
-- Install dependencies: `npm install`
-- Install iOS native dependencies once after cloning or when native deps change: `cd ios && pod install && cd ..`
-- Start the Metro bundler: `npm run start`
-- Run the app: `npm run ios` or `npm run android` (simulator/emulator must be running).
+- Tracks inventory items across spirits, liqueurs, wine, beer, mixers, bitters, syrups, juices, garnishes, tools, glassware, and other bar items.
+- Supports add, edit, archive, restore, permanent delete with confirmation, duplicate, open/unopened toggles, search, filters, sorting, and low-detail inventory cards.
+- Stores local inventory, share settings, locally created share-link management records, saved recipes, tool data, and catalog data in the local SQLite database.
+- Imports and exports inventory backup data as JSON and CSV.
+- Manages tools and glassware as normal inventory records with specialized checklist-style screens.
+- Builds guest-safe sharing previews from sanitized inventory data.
+- Creates backend-backed public share links when `EXPO_PUBLIC_BAR_TRACKER_API_BASE_URL` is configured.
+- Keeps created share links locally so the owner can copy, preview, share, and disable them later from the same device.
 
-## Native projects
+## What The App Does Not Do Yet
 
-- `android/` and `ios/` are included so the standard React Native CLI commands work.
-- Hermes is disabled on both platforms for this project, so local native setup does not require the extra Hermes/CMake toolchain.
+- It does not have user accounts or cross-device sync.
+- Locally saved share-link management records are device-local.
+- Native file picker/save integration for import/export is intentionally minimal; current import supports pasted JSON/CSV content and export uses the platform share sheet.
 
-## Tooling
+## Getting Started
 
-- Lint: `npm run lint` (ESLint with React Native, TypeScript, import sorting, and the provided strict ruleset)
-- Format: `npm run format` (Prettier)
-- TypeScript: `tsconfig.json` extends `@tsconfig/react-native` with strict type-checking.
+Install prerequisites for React Native: Node 18+, Watchman on macOS, Xcode for iOS, and Android SDK/Java for Android.
 
-## Project structure
+```bash
+npm install
+```
 
-- `src/App.tsx`: App entry and navigation wrapper.
-- `src/assets/`: App-bundled static assets such as scene images, item art, and placeholders.
-- `src/screens/InventoryScreen.tsx`: Inventory overview with summary stats.
-- `src/components/InventoryList.tsx` / `InventoryListItem.tsx`: Inventory list rendering.
-- `src/data/sampleInventory.ts`: Seed data for demo content.
-- `src/types/inventory.ts`: Shared inventory types.
-- `src/theme/colors.ts`: Centralized palette.
+For iOS after installing dependencies or changing native packages:
 
-## Next steps
+```bash
+cd ios
+bundle exec pod install
+cd ..
+```
 
-- Replace `sampleInventory` with data from storage or an API.
-- Add CRUD flows for items (add, edit, archive) plus quantity adjustments.
-- Hook up authentication or syncing if you plan multi-device use.
+Run the app:
+
+```bash
+npm run start
+npm run ios
+npm run android
+```
+
+## Environment
+
+Copy `.env.example` if needed and configure:
+
+```env
+EXPO_PUBLIC_BAR_TRACKER_API_BASE_URL=http://localhost:10000
+```
+
+Use the deployed API base URL for Render or another hosted backend.
+
+## Navigation Map
+
+- **Home**
+  - Inventory overview and summary stats.
+  - Category counts.
+  - Recently updated items.
+  - Entry point to Tools & Glassware.
+  - Active inventory list.
+
+- **Bar**
+  - Full inventory manager.
+  - Add/edit/archive/restore/delete items.
+  - Duplicate items.
+  - Toggle open/unopened.
+  - Cycle visibility between Private, Shared, and Guest Visible.
+  - Search, filter, sort, active/archived views, and list/display modes.
+
+- **Recipes**
+  - Saved recipe and recommendation workspace currently present in the app.
+  - Uses local inventory and tool context.
+
+- **Shopping Cart**
+  - Placeholder route for future shopping workflow.
+
+- **Tools & Glassware**
+  - Checklist-style management for common bar tools and glassware.
+  - Creates/restores inventory items only when selected.
+  - Supports custom tools and glassware.
+
+- **Import / Export**
+  - Export inventory as JSON or CSV.
+  - Parse and preview JSON/CSV imports.
+  - Import with duplicate protection.
+
+- **Share**
+  - Local guest-safe share preview.
+  - Create backend public share links from sanitized guest-safe data only.
+  - Preview/share/disable the most recently created link.
+
+- **Share Links**
+  - Local owner-side management for links created on this device.
+  - Shows active and disabled links.
+  - Copy, preview, native share, and disable actions.
+
+- **Manage Sharing**
+  - Configure share title, description, included categories, excluded items, and visibility rules.
+
+- **Connected Bars**
+  - Placeholder route for future multi-bar/account functionality.
+
+## Project Structure
+
+- `src/App.tsx`: App shell and route map.
+- `src/catalog/`: Local catalog import, normalization, SQLite schema, seed loading, and repository logic.
+- `src/components/`: Shared inventory list components.
+- `src/config/api.ts`: API base URL configuration.
+- `src/data/`: Local repositories, stores, inventory transfer helpers, share settings, share links, and guest-safe mapping.
+- `src/features/recipes/`: Recipe-related local data, hooks, AI prompt plumbing, and recommendation helpers.
+- `src/screens/`: Route-level UI screens.
+- `src/services/`: API service clients.
+- `src/theme/`: Shared colors.
+- `src/types/`: Shared TypeScript models.
+- `src/generated/catalog.seed.json`: Bundled catalog seed generated by `bar-scripts`.
+
+## Catalog Seed Updates
+
+The app consumes the generated catalog seed at `src/generated/catalog.seed.json`.
+
+From this repo:
+
+```bash
+npm run build:catalog
+```
+
+This delegates to `../bar-scripts`.
+
+## Quality
+
+```bash
+npx tsc --noEmit
+npm run lint
+npm run format
+```
+
+There is currently no test script configured.
