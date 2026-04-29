@@ -157,6 +157,7 @@ function EquipmentScreen(): React.JSX.Element {
           value={customName}
         />
         <Pressable
+          accessibilityLabel={mode === 'tools' ? 'Add custom tool' : 'Add custom glassware'}
           accessibilityRole="button"
           onPress={addCustomEquipment}
           style={({ pressed }): StyleProp<ViewStyle> => {
@@ -199,6 +200,7 @@ function SegmentButton({ isActive, label, onPress }: SegmentButtonProps): React.
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityState={{ selected: isActive }}
       onPress={onPress}
       style={({ pressed }): StyleProp<ViewStyle> => {
         return [
@@ -224,6 +226,7 @@ type EquipmentOptionProps = {
 function EquipmentOption({ isPending, onToggle, row }: EquipmentOptionProps): React.JSX.Element {
   return (
     <Pressable
+      accessibilityLabel={`${row.available ? 'Archive' : 'Add'} ${row.name}`}
       accessibilityRole="checkbox"
       accessibilityState={{ checked: row.available, disabled: isPending }}
       disabled={isPending}

@@ -115,6 +115,7 @@ function InventoryTransferScreen(): React.JSX.Element {
         </Text>
         <View style={styles.actionRow}>
           <Pressable
+            accessibilityLabel="Export inventory as JSON backup"
             accessibilityRole="button"
             onPress={(): void => {
               exportContent('json').catch((error: unknown): void => {
@@ -128,6 +129,7 @@ function InventoryTransferScreen(): React.JSX.Element {
             <Text style={styles.primaryButtonText}>Export JSON Backup</Text>
           </Pressable>
           <Pressable
+            accessibilityLabel="Export inventory as CSV spreadsheet"
             accessibilityRole="button"
             onPress={(): void => {
               exportContent('csv').catch((error: unknown): void => {
@@ -192,6 +194,7 @@ function InventoryTransferScreen(): React.JSX.Element {
         />
         <View style={styles.actionRow}>
           <Pressable
+            accessibilityLabel="Preview import"
             accessibilityRole="button"
             onPress={previewImport}
             style={({ pressed }): StyleProp<ViewStyle> => {
@@ -201,7 +204,9 @@ function InventoryTransferScreen(): React.JSX.Element {
             <Text style={styles.secondaryButtonText}>Preview Import</Text>
           </Pressable>
           <Pressable
+            accessibilityLabel={isImporting ? 'Importing inventory' : 'Import inventory'}
             accessibilityRole="button"
+            accessibilityState={{ disabled: isImporting }}
             disabled={isImporting}
             onPress={(): void => {
               applyImport().catch((error: unknown): void => {

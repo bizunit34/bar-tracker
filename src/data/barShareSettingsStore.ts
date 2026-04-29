@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 
 import { InventoryItem } from '../types/inventory';
 import { BarShareSettings } from '../types/sharing';
+import { logSafeError } from '../utils/logging';
 import {
   createDefaultShareSettings,
   getShareSettings,
@@ -28,7 +29,7 @@ function subscribe(listener: Listener): () => void {
 
   if (!isHydrated) {
     hydrateShareSettings().catch((error: unknown): void => {
-      console.error('Failed to load share settings.', error);
+      logSafeError('Failed to load share settings', error);
     });
   }
 
@@ -60,7 +61,7 @@ export function saveBarShareSettings(settings: BarShareSettings): void {
   };
   emitChange();
   saveShareSettings(shareSettings).catch((error: unknown): void => {
-    console.error('Failed to save share settings.', error);
+    logSafeError('Failed to save share settings', error);
   });
 }
 
@@ -68,6 +69,6 @@ export function resetBarShareSettings(fallbackItems: Array<InventoryItem> = []):
   shareSettings = createDefaultShareSettings(fallbackItems);
   emitChange();
   resetShareSettings(fallbackItems).catch((error: unknown): void => {
-    console.error('Failed to reset share settings.', error);
+    logSafeError('Failed to reset share settings', error);
   });
 }

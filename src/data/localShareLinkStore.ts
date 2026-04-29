@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 
 import { LocalShareLinkRecord } from '../types/shareLinks';
+import { logSafeError } from '../utils/logging';
 import {
   listLocalShareLinks,
   markLocalShareLinkDisabled,
@@ -24,7 +25,7 @@ function subscribe(listener: Listener): () => void {
 
   if (!isHydrated) {
     hydrateLocalShareLinks().catch((error: unknown): void => {
-      console.error('Failed to load local share links.', error);
+      logSafeError('Failed to load local share links', error);
     });
   }
 
@@ -68,7 +69,7 @@ export function saveLocalShareLinkRecord(record: LocalShareLinkRecord): void {
   saveLocalShareLink(record)
     .then(replaceRecord)
     .catch((error: unknown): void => {
-      console.error('Failed to save local share link.', error);
+      logSafeError('Failed to save local share link', error);
     });
 }
 

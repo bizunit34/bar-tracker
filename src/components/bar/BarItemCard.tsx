@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { Image, Pressable, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 
 import { colors, componentTokens, radii, spacing, typography } from '../../theme';
@@ -163,4 +163,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default BarItemCard;
+export default memo(BarItemCard);

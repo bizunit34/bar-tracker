@@ -90,10 +90,10 @@ export function buildExternalKey(
   fallbackName: string,
 ): string {
   if (liquorCode) {
-    return `mi-liquor-${liquorCode}`;
+    return `mlcc:${liquorCode}`;
   }
 
-  return `mi-liquor-${normalizeName(fallbackName).replace(/\s+/g, '-')}`;
+  return `mlcc:${normalizeName(fallbackName).replace(/\s+/g, '-')}`;
 }
 
 export function normalizeCatalogImportRecord(

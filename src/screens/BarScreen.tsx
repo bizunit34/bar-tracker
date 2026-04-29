@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -36,6 +36,7 @@ import {
   InventoryItem,
   InventoryVisibility,
 } from '../types/inventory';
+import { logSafeError } from '../utils/logging';
 
 type ViewMode = 'list' | 'display';
 
@@ -302,31 +303,31 @@ function BarScreen({
       });
   }, [filters, inventoryItems]);
 
-  const showFeedback = (message: string): void => {
+  const showFeedback = useCallback((message: string): void => {
     setFeedbackMessage(message);
 
     setTimeout((): void => {
       setFeedbackMessage(null);
     }, 2400);
-  };
+  }, []);
 
-  const openAddItem = (): void => {
+  const openAddItem = useCallback((): void => {
     setEditorMode('add');
     setEditingItemId(null);
     setForm(emptyItemForm);
     setIsEditorOpen(true);
-  };
+  }, []);
 
-  const openEditItem = (item: InventoryItem): void => {
+  const openEditItem = useCallback((item: InventoryItem): void => {
     setEditorMode('edit');
     setEditingItemId(item.id);
     setForm(createFormFromItem(item));
     setIsEditorOpen(true);
-  };
+  }, []);
 
-  const closeEditor = (): void => {
+  const closeEditor = useCallback((): void => {
     setIsEditorOpen(false);
-  };
+  }, []);
 
   const saveItem = (): void => {
     const nextItem = createItemFromForm(
@@ -344,81 +345,106 @@ function BarScreen({
     showFeedback(modeLabel(editorMode));
   };
 
-  const removeItem = (itemId: string): void => {
-    removeBarInventoryItem(itemId);
-    setExpandedItemId(null);
-    showFeedback('Item deleted.');
-  };
+  const removeItem = useCallback(
+    (itemId: string): void => {
+      removeBarInventoryItem(itemId);
+      setExpandedItemId(null);
+      showFeedback('Item deleted.');
+    },
+    [showFeedback],
+  );
 
-  const archiveItem = (itemId: string): void => {
-    archiveBarInventoryItem(itemId);
-    setExpandedItemId(null);
-    showFeedback('Item archived.');
-  };
+  const archiveItem = useCallback(
+    (itemId: string): void => {
+      archiveBarInventoryItem(itemId);
+      setExpandedItemId(null);
+      showFeedback('Item archived.');
+    },
+    [showFeedback],
+  );
 
-  const restoreItem = (itemId: string): void => {
-    restoreBarInventoryItem(itemId);
-    setExpandedItemId(itemId);
-    setFilters({ ...filters, archiveStatus: 'active' });
-    showFeedback('Item restored.');
-  };
+  const restoreItem = useCallback(
+    (itemId: string): void => {
+      restoreBarInventoryItem(itemId);
+      setExpandedItemId(itemId);
+      setFilters((currentFilters: BarFilterState): BarFilterState => {
+        return { ...currentFilters, archiveStatus: 'active' };
+      });
+      showFeedback('Item restored.');
+    },
+    [showFeedback],
+  );
 
-  const confirmRemoveItem = (item: InventoryItem): void => {
-    Alert.alert('Delete item?', `Delete ${item.name} permanently? This cannot be undone.`, [
-      { style: 'cancel', text: 'Cancel' },
-      {
-        style: 'destructive',
-        text: 'Delete',
-        onPress: (): void => {
-          removeItem(item.id);
+  const confirmRemoveItem = useCallback(
+    (item: InventoryItem): void => {
+      Alert.alert('Delete item?', `Delete ${item.name} permanently? This cannot be undone.`, [
+        { style: 'cancel', text: 'Cancel' },
+        {
+          style: 'destructive',
+          text: 'Delete permanently',
+          onPress: (): void => {
+            removeItem(item.id);
+          },
         },
-      },
-    ]);
-  };
+      ]);
+    },
+    [removeItem],
+  );
 
-  const duplicateItem = (item: InventoryItem): void => {
-    const now = new Date().toISOString();
-    const duplicatedItem: InventoryItem = {
-      ...item,
-      archivedAt: null,
-      createdAt: now,
-      id: createInventoryItemId(`${item.name}-copy`),
-      isArchived: false,
-      name: `${item.name} Copy`,
-      updatedAt: now,
-    };
+  const duplicateItem = useCallback(
+    (item: InventoryItem): void => {
+      const now = new Date().toISOString();
+      const duplicatedItem: InventoryItem = {
+        ...item,
+        archivedAt: null,
+        createdAt: now,
+        id: createInventoryItemId(`${item.name}-copy`),
+        isArchived: false,
+        name: `${item.name} Copy`,
+        updatedAt: now,
+      };
 
-    saveBarInventoryItem(duplicatedItem);
-    setExpandedItemId(duplicatedItem.id);
-    setFilters({ ...filters, archiveStatus: 'active' });
-    showFeedback('Item duplicated.');
-  };
+      saveBarInventoryItem(duplicatedItem);
+      setExpandedItemId(duplicatedItem.id);
+      setFilters((currentFilters: BarFilterState): BarFilterState => {
+        return { ...currentFilters, archiveStatus: 'active' };
+      });
+      showFeedback('Item duplicated.');
+    },
+    [showFeedback],
+  );
 
-  const toggleOpenStatus = (item: InventoryItem): void => {
-    saveBarInventoryItem({
-      ...item,
-      isOpen: !item.isOpen,
-      updatedAt: new Date().toISOString(),
-    });
-    showFeedback(item.isOpen ? 'Marked unopened.' : 'Marked open.');
-  };
+  const toggleOpenStatus = useCallback(
+    (item: InventoryItem): void => {
+      saveBarInventoryItem({
+        ...item,
+        isOpen: !item.isOpen,
+        updatedAt: new Date().toISOString(),
+      });
+      showFeedback(item.isOpen ? 'Marked unopened.' : 'Marked open.');
+    },
+    [showFeedback],
+  );
 
-  const toggleVisibility = (item: InventoryItem): void => {
-    const currentVisibility = item.visibility ?? 'private';
-    const nextVisibility: InventoryVisibility =
-      currentVisibility === 'private'
-        ? 'shared'
-        : currentVisibility === 'shared'
-          ? 'guest_visible'
-          : 'private';
+  const toggleVisibility = useCallback(
+    (item: InventoryItem): void => {
+      const currentVisibility = item.visibility ?? 'private';
+      const nextVisibility: InventoryVisibility =
+        currentVisibility === 'private'
+          ? 'shared'
+          : currentVisibility === 'shared'
+            ? 'guest_visible'
+            : 'private';
 
-    saveBarInventoryItem({
-      ...item,
-      updatedAt: new Date().toISOString(),
-      visibility: nextVisibility,
-    });
-    showFeedback(`Visibility changed to ${formatFilterLabel(nextVisibility)}.`);
-  };
+      saveBarInventoryItem({
+        ...item,
+        updatedAt: new Date().toISOString(),
+        visibility: nextVisibility,
+      });
+      showFeedback(`Visibility changed to ${formatFilterLabel(nextVisibility)}.`);
+    },
+    [showFeedback],
+  );
 
   const emptyStateKind = useMemo((): EmptyStateKind => {
     if (inventoryItems.length === 0) {
@@ -432,9 +458,8 @@ function BarScreen({
     return 'noSearchResults';
   }, [filters.archiveStatus, inventoryItems.length]);
 
-  const renderItem = ({ item }: ListRenderItemInfo<InventoryItem>): React.JSX.Element => {
-    const stockStatus = getStockStatus(item);
-    const primaryAction = (targetItem: InventoryItem): void => {
+  const primaryItemAction = useCallback(
+    (targetItem: InventoryItem): void => {
       if (targetItem.isArchived) {
         restoreItem(targetItem.id);
 
@@ -442,103 +467,115 @@ function BarScreen({
       }
 
       openEditItem(targetItem);
-    };
+    },
+    [openEditItem, restoreItem],
+  );
 
-    if (filters.viewMode === 'display') {
+  const toggleExpandedItem = useCallback((itemId: string): void => {
+    setExpandedItemId((currentItemId: string | null): string | null => {
+      return currentItemId === itemId ? null : itemId;
+    });
+  }, []);
+
+  const renderItem = useCallback(
+    ({ item }: ListRenderItemInfo<InventoryItem>): React.JSX.Element => {
+      const stockStatus = getStockStatus(item);
+
+      if (filters.viewMode === 'display') {
+        return (
+          <BarItemCard
+            item={item}
+            stockStatus={stockStatus}
+            onOpenActions={setActionSheetItem}
+            onPrimaryAction={primaryItemAction}
+          />
+        );
+      }
+
       return (
-        <BarItemCard
+        <BarItemRow
+          isExpanded={item.id === expandedItemId}
           item={item}
           stockStatus={stockStatus}
           onOpenActions={setActionSheetItem}
-          onPrimaryAction={primaryAction}
+          onPrimaryAction={primaryItemAction}
+          onToggleExpanded={toggleExpandedItem}
         />
       );
-    }
-
-    return (
-      <BarItemRow
-        isExpanded={item.id === expandedItemId}
-        item={item}
-        stockStatus={stockStatus}
-        onOpenActions={setActionSheetItem}
-        onPrimaryAction={primaryAction}
-        onToggleExpanded={(): void => {
-          setExpandedItemId((currentItemId: string | null): string | null => {
-            return currentItemId === item.id ? null : item.id;
-          });
-        }}
-      />
-    );
-  };
+    },
+    [expandedItemId, filters.viewMode, primaryItemAction, toggleExpandedItem],
+  );
 
   return (
-    <FlatList
-      columnWrapperStyle={filters.viewMode === 'display' ? styles.displayRow : undefined}
-      contentContainerStyle={styles.container}
-      data={visibleItems}
-      extraData={expandedItemId}
-      key={filters.viewMode}
-      keyExtractor={(item: InventoryItem): string => {
-        return item.id;
-      }}
-      ListEmptyComponent={
-        <EmptyInventoryState
-          kind={emptyStateKind}
-          onAddItem={openAddItem}
-          onResetFilters={(): void => {
-            setFilters(initialFilters);
-          }}
-          onViewActive={(): void => {
-            setFilters({ ...initialFilters, archiveStatus: 'active' });
-          }}
-        />
-      }
-      ListHeaderComponent={
-        <>
-          <BarControls
-            filters={filters}
+    <>
+      <FlatList
+        columnWrapperStyle={filters.viewMode === 'display' ? styles.displayRow : undefined}
+        contentContainerStyle={styles.container}
+        data={visibleItems}
+        extraData={expandedItemId}
+        initialNumToRender={10}
+        key={filters.viewMode}
+        keyExtractor={(item: InventoryItem): string => {
+          return item.id;
+        }}
+        ListEmptyComponent={
+          <EmptyInventoryState
+            kind={emptyStateKind}
             onAddItem={openAddItem}
-            onManageEquipment={onManageEquipment}
-            onOpenImportExport={onOpenImportExport}
-            productTypes={productTypes}
-            resultCount={visibleItems.length}
-            onFiltersChange={(nextFilters: BarFilterState): void => {
-              setExpandedItemId(null);
-              setFilters(nextFilters);
+            onResetFilters={(): void => {
+              setFilters(initialFilters);
+            }}
+            onViewActive={(): void => {
+              setFilters({ ...initialFilters, archiveStatus: 'active' });
             }}
           />
-          {feedbackMessage ? <Text style={styles.feedbackText}>{feedbackMessage}</Text> : null}
-        </>
-      }
-      numColumns={filters.viewMode === 'display' ? 2 : 1}
-      renderItem={renderItem}
-      ListFooterComponent={
-        <>
-          <ItemEditorModal
-            catalogItems={catalogInventoryItems}
-            form={form}
-            mode={editorMode}
-            visible={isEditorOpen}
-            onChange={setForm}
-            onClose={closeEditor}
-            onSave={saveItem}
-          />
-          <BarItemActionSheet
-            item={actionSheetItem}
-            onArchive={archiveItem}
-            onClose={(): void => {
-              setActionSheetItem(null);
-            }}
-            onDuplicate={duplicateItem}
-            onEdit={openEditItem}
-            onRemove={confirmRemoveItem}
-            onRestore={restoreItem}
-            onToggleOpen={toggleOpenStatus}
-            onToggleVisibility={toggleVisibility}
-          />
-        </>
-      }
-    />
+        }
+        ListHeaderComponent={
+          <>
+            <BarControls
+              filters={filters}
+              onAddItem={openAddItem}
+              onManageEquipment={onManageEquipment}
+              onOpenImportExport={onOpenImportExport}
+              productTypes={productTypes}
+              resultCount={visibleItems.length}
+              onFiltersChange={(nextFilters: BarFilterState): void => {
+                setExpandedItemId(null);
+                setFilters(nextFilters);
+              }}
+            />
+            {feedbackMessage ? <Text style={styles.feedbackText}>{feedbackMessage}</Text> : null}
+          </>
+        }
+        maxToRenderPerBatch={10}
+        numColumns={filters.viewMode === 'display' ? 2 : 1}
+        renderItem={renderItem}
+        updateCellsBatchingPeriod={50}
+        windowSize={7}
+      />
+      <ItemEditorModal
+        catalogItems={catalogInventoryItems}
+        form={form}
+        mode={editorMode}
+        visible={isEditorOpen}
+        onChange={setForm}
+        onClose={closeEditor}
+        onSave={saveItem}
+      />
+      <BarItemActionSheet
+        item={actionSheetItem}
+        onArchive={archiveItem}
+        onClose={(): void => {
+          setActionSheetItem(null);
+        }}
+        onDuplicate={duplicateItem}
+        onEdit={openEditItem}
+        onRemove={confirmRemoveItem}
+        onRestore={restoreItem}
+        onToggleOpen={toggleOpenStatus}
+        onToggleVisibility={toggleVisibility}
+      />
+    </>
   );
 }
 
@@ -681,6 +718,7 @@ function BarControls({
       <View style={styles.utilityRow}>
         {onManageEquipment ? (
           <Pressable
+            accessibilityLabel="Open Tools and Glassware"
             accessibilityRole="button"
             onPress={onManageEquipment}
             style={({ pressed }): StyleProp<ViewStyle> => {
@@ -692,6 +730,7 @@ function BarControls({
         ) : null}
         {onOpenImportExport ? (
           <Pressable
+            accessibilityLabel="Open Import and Export"
             accessibilityRole="button"
             onPress={onOpenImportExport}
             style={({ pressed }): StyleProp<ViewStyle> => {
@@ -896,7 +935,9 @@ function DropdownFilter({
   return (
     <View style={styles.dropdown}>
       <Pressable
+        accessibilityLabel={`${isOpen ? 'Collapse' : 'Expand'} ${label} filter`}
         accessibilityRole="button"
+        accessibilityState={{ expanded: isOpen }}
         onPress={onToggle}
         style={({ pressed }): StyleProp<ViewStyle> => {
           return [styles.dropdownButton, pressed ? styles.controlPressed : null];
@@ -1129,6 +1170,7 @@ function SegmentButton({ isActive, label, onPress }: ButtonProps): React.JSX.Ele
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityState={{ selected: isActive }}
       onPress={onPress}
       style={({ pressed }): StyleProp<ViewStyle> => {
         return [
@@ -1262,6 +1304,7 @@ function ItemEditorModal({
               {mode === 'add' ? 'Add bar item' : 'Edit bar item'}
             </Text>
             <Pressable
+              accessibilityLabel="Close item editor"
               accessibilityRole="button"
               onPress={onClose}
               style={({ pressed }): StyleProp<ViewStyle> => {
@@ -1293,6 +1336,7 @@ function ItemEditorModal({
                   {suggestions.map((item: InventoryItem): React.JSX.Element => {
                     return (
                       <Pressable
+                        accessibilityLabel={`Select catalog item ${item.name}`}
                         accessibilityRole="button"
                         key={item.id}
                         onPress={(): void => {
@@ -1314,6 +1358,7 @@ function ItemEditorModal({
                     );
                   })}
                   <Pressable
+                    accessibilityLabel="Use custom item"
                     accessibilityRole="button"
                     onPress={useCustomItem}
                     style={({ pressed }): StyleProp<ViewStyle> => {
@@ -1334,6 +1379,7 @@ function ItemEditorModal({
                     below.
                   </Text>
                   <Pressable
+                    accessibilityLabel="Clear catalog selection"
                     accessibilityRole="button"
                     onPress={useCustomItem}
                     style={({ pressed }): StyleProp<ViewStyle> => {
@@ -1398,7 +1444,13 @@ function ItemEditorModal({
 
             <View style={styles.formGroup}>
               <Pressable
+                accessibilityLabel={
+                  isMoreDetailsOpen
+                    ? 'Hide photo and advanced details'
+                    : 'Show photo and advanced details'
+                }
                 accessibilityRole="button"
+                accessibilityState={{ expanded: isMoreDetailsOpen }}
                 onPress={(): void => {
                   setIsMoreDetailsOpen((isOpen: boolean): boolean => {
                     return !isOpen;
@@ -1594,7 +1646,9 @@ function ItemEditorModal({
                       />
                     </View>
                     <Pressable
+                      accessibilityLabel={`Remove ${holding.label || 'holding'}`}
                       accessibilityRole="button"
+                      accessibilityState={{ disabled: form.holdings.length <= 1 }}
                       disabled={form.holdings.length <= 1}
                       onPress={(): void => {
                         removeHolding(holding.id);
@@ -1628,7 +1682,7 @@ function ItemEditorModal({
                   accessibilityRole="button"
                   onPress={(): void => {
                     pickImage('camera').catch((error: unknown): void => {
-                      console.error('Failed to take item photo.', error);
+                      logSafeError('Failed to take item photo', error);
                     });
                   }}
                   style={({ pressed }): StyleProp<ViewStyle> => {
@@ -1641,7 +1695,7 @@ function ItemEditorModal({
                   accessibilityRole="button"
                   onPress={(): void => {
                     pickImage('gallery').catch((error: unknown): void => {
-                      console.error('Failed to select item photo.', error);
+                      logSafeError('Failed to select item photo', error);
                     });
                   }}
                   style={({ pressed }): StyleProp<ViewStyle> => {
@@ -1798,8 +1852,9 @@ function FormOption({
   return (
     <Pressable
       disabled={isDisabled}
+      accessibilityLabel={label}
       accessibilityRole="button"
-      accessibilityState={{ selected: isSelected }}
+      accessibilityState={{ disabled: isDisabled, selected: isSelected }}
       onPress={onPress}
       style={({ pressed }): StyleProp<ViewStyle> => {
         return [
@@ -1845,7 +1900,13 @@ function RatingPicker({
   rating: number | undefined;
 }): React.JSX.Element {
   return (
-    <View style={styles.ratingPicker}>
+    <View
+      accessibilityLabel={
+        rating === undefined ? 'Rating not set' : `Current rating ${rating} out of 5`
+      }
+      accessibilityValue={rating === undefined ? undefined : { max: 5, min: 0, now: rating }}
+      style={styles.ratingPicker}
+    >
       {[1, 2, 3, 4, 5].map((value: number): React.JSX.Element => {
         const isSelected = rating !== undefined && value <= rating;
 
@@ -1853,6 +1914,7 @@ function RatingPicker({
           <Pressable
             accessibilityLabel={`Rate ${value} out of 5`}
             accessibilityRole="button"
+            accessibilityState={{ selected: isSelected }}
             key={value}
             onPress={(): void => {
               onChange(value);
@@ -1866,6 +1928,7 @@ function RatingPicker({
         );
       })}
       <Pressable
+        accessibilityLabel={rating === undefined ? 'Rating not set' : 'Clear rating'}
         accessibilityRole="button"
         onPress={(): void => {
           onChange(undefined);
@@ -1901,6 +1964,7 @@ function VisibilityOption({
 
   return (
     <Pressable
+      accessibilityLabel={`${label}. ${helper}`}
       accessibilityRole="button"
       accessibilityState={{ selected: isSelected }}
       onPress={onPress}
@@ -2033,7 +2097,7 @@ function createHoldingFormFromItem(item: InventoryItem): Array<ItemHoldingFormSt
 function createInventoryHoldings(holdings: Array<ItemHoldingFormState>): Array<InventoryHolding> {
   return holdings.map((holding: ItemHoldingFormState): InventoryHolding => {
     return {
-      amount: parseNumberOrFallback(holding.amount, 0),
+      amount: Math.max(0, parseNumberOrFallback(holding.amount, 0)),
       id: holding.id,
       label: parseOptionalText(holding.label) ?? 'Bottle',
     };

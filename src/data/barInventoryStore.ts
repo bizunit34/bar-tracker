@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 
 import { InventoryItem } from '../types/inventory';
+import { logSafeError } from '../utils/logging';
 import {
   archiveItem,
   deleteItem,
@@ -30,7 +31,7 @@ function subscribe(listener: Listener): () => void {
 
   if (!isHydrated) {
     hydrateBarInventoryItems().catch((error: unknown): void => {
-      console.error('Failed to load bar inventory.', error);
+      logSafeError('Failed to load bar inventory', error);
     });
   }
 
@@ -87,7 +88,7 @@ export function saveBarInventoryItem(item: InventoryItem): void {
 
   replaceItem(normalizedItem);
   saveItem(normalizedItem).catch((error: unknown): void => {
-    console.error('Failed to save bar inventory item.', error);
+    logSafeError('Failed to save bar inventory item', error);
   });
 }
 
@@ -97,7 +98,7 @@ export function removeBarInventoryItem(itemId: string): void {
   });
   emitChange();
   deleteItem(itemId).catch((error: unknown): void => {
-    console.error('Failed to delete bar inventory item.', error);
+    logSafeError('Failed to delete bar inventory item', error);
   });
 }
 
@@ -111,7 +112,7 @@ export function archiveBarInventoryItem(itemId: string): void {
   });
   emitChange();
   archiveItem(itemId).catch((error: unknown): void => {
-    console.error('Failed to archive bar inventory item.', error);
+    logSafeError('Failed to archive bar inventory item', error);
   });
 }
 
@@ -128,7 +129,7 @@ export function restoreBarInventoryItem(itemId: string): void {
   });
   emitChange();
   restoreItem(itemId).catch((error: unknown): void => {
-    console.error('Failed to restore bar inventory item.', error);
+    logSafeError('Failed to restore bar inventory item', error);
   });
 }
 

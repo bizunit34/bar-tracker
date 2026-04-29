@@ -41,6 +41,7 @@ import { generateRecipeRecommendations } from '../features/recipes/services/reci
 import { Recipe } from '../features/recipes/types';
 import { colors } from '../theme/colors';
 import { InventoryItem } from '../types/inventory';
+import { logSafeError } from '../utils/logging';
 
 type RecipesStep = 'confirm' | 'home' | 'loading' | 'quiz' | 'results' | 'savedDetail';
 
@@ -425,7 +426,7 @@ function RecipesHome({
                 key={tool.id}
                 onPress={(): void => {
                   onToggleTool(tool.id).catch((error: unknown): void => {
-                    console.error('Failed to toggle bar tool.', error);
+                    logSafeError('Failed to toggle bar tool', error);
                   });
                 }}
                 style={({ pressed }): StyleProp<ViewStyle> => {
@@ -866,7 +867,7 @@ function ResultsStep({
             recipe={item.recipe}
             onFavorite={(): void => {
               onFavorite(item.recipe).catch((error: unknown): void => {
-                console.error('Failed to save favorite recipe.', error);
+                logSafeError('Failed to save favorite recipe', error);
               });
             }}
           />

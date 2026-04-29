@@ -38,7 +38,12 @@ function BarItemActionSheet({
 
   return (
     <Modal animationType="fade" onRequestClose={onClose} transparent visible={item !== null}>
-      <Pressable accessibilityRole="button" onPress={onClose} style={styles.backdrop}>
+      <Pressable
+        accessibilityLabel="Close item actions"
+        accessibilityRole="button"
+        onPress={onClose}
+        style={styles.backdrop}
+      >
         <Pressable style={styles.sheet}>
           {item ? (
             <>
@@ -121,6 +126,7 @@ function BarItemActionSheet({
               <ActionRow
                 destructive
                 icon="trash"
+                accessibilityLabel={`Delete ${item.name} permanently`}
                 label="Delete"
                 onPress={(): void => {
                   runAction((): void => {
@@ -139,9 +145,11 @@ function BarItemActionSheet({
 function ActionRow({
   destructive = false,
   icon,
+  accessibilityLabel,
   label,
   onPress,
 }: {
+  accessibilityLabel?: string;
   destructive?: boolean;
   icon: BarIconName;
   label: string;
@@ -149,6 +157,7 @@ function ActionRow({
 }): React.JSX.Element {
   return (
     <Pressable
+      accessibilityLabel={accessibilityLabel ?? label}
       accessibilityRole="button"
       onPress={onPress}
       style={({ pressed }): StyleProp<ViewStyle> => {

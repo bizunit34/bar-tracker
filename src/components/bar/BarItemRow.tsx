@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { Pressable, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 
 import { colors, componentTokens, radii, spacing, typography } from '../../theme';
@@ -18,7 +18,7 @@ type BarItemRowProps = {
   item: InventoryItem;
   onOpenActions: (item: InventoryItem) => void;
   onPrimaryAction: (item: InventoryItem) => void;
-  onToggleExpanded: () => void;
+  onToggleExpanded: (itemId: string) => void;
   stockStatus: BarStockStatus;
 };
 
@@ -35,7 +35,10 @@ function BarItemRow({
       <Pressable
         accessibilityLabel={`${isExpanded ? 'Hide' : 'Show'} details for ${item.name}`}
         accessibilityRole="button"
-        onPress={onToggleExpanded}
+        accessibilityState={{ expanded: isExpanded }}
+        onPress={(): void => {
+          onToggleExpanded(item.id);
+        }}
         style={({ pressed }): StyleProp<ViewStyle> => {
           return [styles.summary, pressed ? styles.pressed : null];
         }}
@@ -168,4 +171,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default BarItemRow;
+export default memo(BarItemRow);

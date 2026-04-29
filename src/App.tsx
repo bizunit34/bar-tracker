@@ -27,6 +27,7 @@ import ManageSharingScreen from './screens/ManageSharingScreen';
 import RecipesScreen from './screens/RecipesScreen';
 import SharePreviewScreen from './screens/SharePreviewScreen';
 import { colors } from './theme/colors';
+import { logSafeError } from './utils/logging';
 
 type RouteName =
   | 'Home'
@@ -61,7 +62,7 @@ function App(): React.JSX.Element {
         await hydrateLocalShareLinks();
       })
       .catch((error: unknown): void => {
-        console.error('Failed to initialize local database.', error);
+        logSafeError('Failed to initialize local database', error);
       });
   }, []);
 

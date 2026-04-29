@@ -101,6 +101,12 @@ function numberValue(value: unknown): number | undefined {
   return undefined;
 }
 
+function nonNegativeNumberValue(value: unknown): number | undefined {
+  const parsed = numberValue(value);
+
+  return parsed === undefined ? undefined : Math.max(0, parsed);
+}
+
 function booleanValue(value: unknown): boolean {
   if (typeof value === 'boolean') {
     return value;
@@ -265,12 +271,12 @@ export function normalizeImportedBarItem(raw: unknown, index = 0): InventoryItem
     id,
     isArchived,
     isOpen: booleanValue(raw.isOpen),
-    minStock: numberValue(raw.minStock) ?? 0,
+    minStock: nonNegativeNumberValue(raw.minStock) ?? 0,
     name: asString(raw.name)?.trim() ?? '',
     notes: asString(raw.notes),
     proof: proof ?? null,
     publicNotes: optionalString(raw.publicNotes),
-    quantity: numberValue(raw.quantity) ?? 0,
+    quantity: nonNegativeNumberValue(raw.quantity) ?? 0,
     rating: numberValue(raw.rating),
     size: optionalString(raw.size),
     subcategory: optionalString(raw.subcategory),
@@ -303,7 +309,7 @@ export function parseInventoryExportJson(raw: string): ParsedInventoryImport {
   }
 }
 
-function parseCsvRows(raw: string): Array<Array<string>> {
+function parseCsvRows(raw: string): { errors: Array<string>; rows: Array<Array<string>> } {
   const rows: Array<Array<string>> = [];
   let current = '';
   let row: Array<string> = [];
@@ -340,15 +346,22 @@ function parseCsvRows(raw: string): Array<Array<string>> {
     rows.push(row);
   }
 
-  return rows.filter((csvRow) => {
-    return csvRow.some((value) => {
-      return value.trim().length > 0;
-    });
-  });
+  return {
+    errors: isQuoted ? ['CSV import has an unclosed quoted field.'] : [],
+    rows: rows.filter((csvRow) => {
+      return csvRow.some((value) => {
+        return value.trim().length > 0;
+      });
+    }),
+  };
 }
 
 export function parseInventoryCsv(raw: string): ParsedInventoryImport {
-  const rows = parseCsvRows(raw);
+  const { errors, rows } = parseCsvRows(raw);
+
+  if (errors.length > 0) {
+    return { errors, items: [] };
+  }
 
   if (rows.length === 0) {
     return { errors: ['CSV import is empty.'], items: [] };

@@ -22,6 +22,16 @@ type ReportPriceBookRow = {
   proof: number | null;
 };
 
+function inferMlccItemType(liquorTypeRaw: string | null, name: string): 'spirit' | 'liqueur' {
+  const text = `${liquorTypeRaw ?? ''} ${name}`.toLowerCase();
+
+  return /liqueur|cordial|schnapps|amaretto|creme|cr[eè]me/.test(text) ? 'liqueur' : 'spirit';
+}
+
+function mlccExternalKey(liquorCode: string | null, name: string): string {
+  return liquorCode ? `mlcc:${liquorCode}` : `mlcc:${normalizeName(name).replace(/\s+/g, '-')}`;
+}
+
 export function extractReportPriceBookRows(rows: Array<Array<string>>): Array<ReportPriceBookRow> {
   const records: Array<ReportPriceBookRow> = [];
   let currentLiquorType: string | null = null;
@@ -71,15 +81,27 @@ export function mapReportPriceBookRow(
 
   return {
     adaNumber: row.adaNumber,
-    attributes: {},
+    attributes: {
+      adaNumber: row.adaNumber,
+      basePrice: row.basePrice,
+      bottleSizeMl: row.bottleSizeMl,
+      caseSize: row.caseSize,
+      licenseePrice: row.licenseePrice,
+      liquorCode: row.liquorCode,
+      liquorType: row.liquorTypeRaw,
+      minimumShelfPrice: row.minimumShelfPrice,
+      sourcePriceBookDate: null,
+      vendor: null,
+    },
     basePrice: row.basePrice,
     bottleSizeMl: row.bottleSizeMl,
     brand: null,
     caseSize: row.caseSize,
     category: normalizeCategorySlug(row.liquorTypeRaw),
+    externalKey: mlccExternalKey(row.liquorCode, name),
     isActive: true,
     isNew: row.isNew,
-    itemType: 'spirit',
+    itemType: inferMlccItemType(row.liquorTypeRaw, name),
     licenseePrice: row.licenseePrice,
     liquorCode: row.liquorCode,
     liquorTypeRaw: row.liquorTypeRaw,
@@ -87,7 +109,7 @@ export function mapReportPriceBookRow(
     name,
     normalizedName: normalizeName(name),
     proof: row.proof,
-    source: 'mi_pricebook_report_csv',
+    source: 'mlcc',
     sourceFile,
     status: row.isNew ? 'NEW' : null,
     subcategory: null,
@@ -105,7 +127,7 @@ export function parseReportPriceBookCsv(
   );
 
   return normalizeCatalogImportRecords(records, {
-    source: 'mi_pricebook_report_csv',
+    source: 'mlcc',
     sourceFile,
   });
 }

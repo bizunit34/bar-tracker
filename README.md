@@ -51,7 +51,7 @@ Copy `.env.example` if needed and configure:
 EXPO_PUBLIC_BAR_TRACKER_API_BASE_URL=http://localhost:10000
 ```
 
-Use the deployed API base URL for Render or another hosted backend.
+When this variable is missing, the app still works locally but backend share-link creation is disabled and the Share screens show the missing-API state. For local API development, point it at the locally running `bar-tracker-api`. For Render, use the deployed Render service URL without a trailing slash.
 
 ## Navigation Map
 
@@ -164,3 +164,7 @@ npm run format
 ```
 
 There is currently no test script configured.
+
+Manual QA lives in [`docs/QA.md`](docs/QA.md). The recommended future automated test coverage is documented in [`docs/testing-plan.md`](docs/testing-plan.md).
+
+Diagnostics should use `src/utils/logging.ts` so errors remain useful without logging full inventory records, private notes, pasted import contents, full share payloads, or share management tokens.
