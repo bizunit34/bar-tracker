@@ -2,6 +2,8 @@ import catalogSeed from '../generated/catalog.seed.json';
 import { InventoryCategory, InventoryItem } from '../types/inventory';
 import { CatalogImportRecord } from './types';
 
+const seenCatalogKeys = new Set<string>();
+
 function mapCatalogCategory(record: CatalogImportRecord): InventoryCategory {
   const searchableCategory = [record.category, record.liquorTypeRaw, record.itemType]
     .filter(Boolean)
@@ -30,6 +32,10 @@ function mapCatalogCategory(record: CatalogImportRecord): InventoryCategory {
 
   if (record.itemType === 'spirit') {
     return 'spirit';
+  }
+
+  if (record.itemType === 'wine') {
+    return 'wine';
   }
 
   return 'other';
@@ -65,27 +71,45 @@ function buildCatalogDescription(record: CatalogImportRecord): string | undefine
 
 export const catalogInventoryItems: Array<InventoryItem> = (
   catalogSeed as Array<CatalogImportRecord>
-).map((record: CatalogImportRecord): InventoryItem => {
-  const category = mapCatalogCategory(record);
+)
+  .filter((record: CatalogImportRecord): boolean => {
+    return record.isActive !== false;
+  })
+  .filter(dedupeCatalogRecord)
+  .map((record: CatalogImportRecord): InventoryItem => {
+    const category = mapCatalogCategory(record);
 
-  return {
-    abv: record.abv ?? undefined,
-    brand: record.brand ?? null,
-    category,
-    description: buildCatalogDescription(record),
-    id: record.externalKey ?? record.normalizedName ?? record.name,
-    proof: record.proof ?? null,
-    size:
-      record.bottleSizeMl !== null && record.bottleSizeMl !== undefined
-        ? `${record.bottleSizeMl} ml`
-        : null,
-    subcategory: record.subcategory,
-    minStock: 0,
-    name: record.name,
-    notes: record.liquorCode ? `Liquor code ${record.liquorCode}` : undefined,
-    productType:
-      formatCatalogLabel(record.liquorTypeRaw ?? record.category) ?? formatCatalogLabel(category),
-    quantity: 1,
-    unit: 'bottle',
-  };
-});
+    return {
+      abv: record.abv ?? undefined,
+      brand: record.brand ?? null,
+      category,
+      description: buildCatalogDescription(record),
+      id: record.externalKey ?? record.normalizedName ?? record.name,
+      proof: record.proof ?? null,
+      size:
+        record.bottleSizeMl !== null && record.bottleSizeMl !== undefined
+          ? `${record.bottleSizeMl} ml`
+          : null,
+      subcategory: record.subcategory,
+      minStock: 0,
+      name: record.name,
+      notes: record.liquorCode ? `Liquor code ${record.liquorCode}` : undefined,
+      productType:
+        formatCatalogLabel(record.liquorTypeRaw ?? record.category) ?? formatCatalogLabel(category),
+      quantity: 1,
+      unit: 'bottle',
+    };
+  });
+
+function dedupeCatalogRecord(record: CatalogImportRecord): boolean {
+  const key =
+    record.externalKey ?? `${record.source ?? 'catalog'}:${record.normalizedName ?? record.name}`;
+
+  if (seenCatalogKeys.has(key)) {
+    return false;
+  }
+
+  seenCatalogKeys.add(key);
+
+  return true;
+}

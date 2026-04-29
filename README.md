@@ -158,12 +158,17 @@ This delegates to `../bar-scripts`.
 ## Quality
 
 ```bash
-npx tsc --noEmit
+npm run typecheck
 npm run lint
+npm run lint:fix
 npm run format
+npm run format:check
+npm run check
 ```
 
 There is currently no test script configured.
+
+The app uses the existing strict `.eslintrc.js` configuration with React, React Hooks, React Native, import sorting, type-aware TypeScript rules, and Prettier compatibility. It remains on ESLint 8 until the React Native lint plugin stack supports ESLint 9 without forced peer dependency installs.
 
 Manual QA lives in [`docs/QA.md`](docs/QA.md). The recommended future automated test coverage is documented in [`docs/testing-plan.md`](docs/testing-plan.md).
 

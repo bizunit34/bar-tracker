@@ -12,20 +12,21 @@ export async function importCatalogRecords(records: Array<CatalogImportRecord>):
     source: 'catalog_seed_json',
     sourceFile: 'catalog.seed.json',
   });
+  const deduped = dedupeNormalizedCatalogRecords(normalized);
 
   await recordImportBatch(db, {
     id: batchId,
     importedAt,
-    recordCount: normalized.length,
+    recordCount: deduped.length,
     source: 'catalog_seed_json',
     sourceFile: 'catalog.seed.json',
   });
 
-  for (const record of normalized) {
+  for (const record of deduped) {
     await upsertCatalogImportRecord(db, record, importedAt);
   }
 
-  return normalized.length;
+  return deduped.length;
 }
 
 export async function importNormalizedCatalogRecords(
@@ -36,18 +37,31 @@ export async function importNormalizedCatalogRecords(
   const source = records[0]?.source ?? 'catalog_import';
   const sourceFile = records[0]?.sourceFile ?? null;
   const batchId = `catalog-import-${importedAt}`;
+  const deduped = dedupeNormalizedCatalogRecords(records);
 
   await recordImportBatch(db, {
     id: batchId,
     importedAt,
-    recordCount: records.length,
+    recordCount: deduped.length,
     source,
     sourceFile,
   });
 
-  for (const record of records) {
+  for (const record of deduped) {
     await upsertCatalogImportRecord(db, { ...record, importBatchId: batchId }, importedAt);
   }
 
-  return records.length;
+  return deduped.length;
+}
+
+function dedupeNormalizedCatalogRecords(
+  records: Array<NormalizedCatalogImportRecord>,
+): Array<NormalizedCatalogImportRecord> {
+  const recordsByExternalKey = new Map<string, NormalizedCatalogImportRecord>();
+
+  for (const record of records) {
+    recordsByExternalKey.set(record.externalKey, record);
+  }
+
+  return [...recordsByExternalKey.values()];
 }

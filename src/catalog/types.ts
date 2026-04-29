@@ -1,6 +1,7 @@
 export type CatalogItemType =
   | 'spirit'
   | 'liqueur'
+  | 'wine'
   | 'mixer'
   | 'garnish'
   | 'tool'
@@ -9,7 +10,13 @@ export type CatalogItemType =
   | 'syrup'
   | 'other';
 
-export type CatalogImportAttributeValue = boolean | number | string | null;
+export type CatalogImportAttributeValue =
+  | Array<boolean | number | string | null>
+  | boolean
+  | null
+  | number
+  | string
+  | { [key: string]: CatalogImportAttributeValue };
 
 export type CatalogImportRecord = {
   abv?: number | null;

@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "index.js",
+    "babel.config.js",
+    "metro.config.js",
+    "eslint.config.js"
+  ],
+  "exclude": ["android", "ios", "node_modules", "src/generated"]
+}

@@ -1,0 +1,10 @@
+node_modules
+.env
+android
+ios
+build
+dist
+coverage
+.expo
+.metro-cache
+src/generated

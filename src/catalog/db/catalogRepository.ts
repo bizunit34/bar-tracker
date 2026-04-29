@@ -13,12 +13,20 @@ function attributeValueType(value: CatalogImportAttributeValue): string {
     return 'null';
   }
 
+  if (Array.isArray(value)) {
+    return 'array';
+  }
+
   return typeof value;
 }
 
 function serializeAttributeValue(value: CatalogImportAttributeValue): string | null {
   if (value === null) {
     return null;
+  }
+
+  if (typeof value === 'object') {
+    return JSON.stringify(value);
   }
 
   return String(value);

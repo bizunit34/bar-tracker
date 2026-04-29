@@ -61,6 +61,38 @@ function replaceItem(item: InventoryItem): void {
   emitChange();
 }
 
+function normalizeDuplicateText(value: string | null | undefined): string {
+  return (value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, ' ');
+}
+
+function duplicateInventoryKey(item: InventoryItem): string {
+  return [
+    item.category,
+    normalizeDuplicateText(item.brand),
+    normalizeDuplicateText(item.name),
+    normalizeDuplicateText(item.size),
+  ].join('::');
+}
+
+function findActiveDuplicateItem(item: InventoryItem): InventoryItem | null {
+  const duplicateKey = duplicateInventoryKey(item);
+
+  return (
+    barInventoryItems.find((currentItem: InventoryItem): boolean => {
+      return (
+        currentItem.id !== item.id &&
+        !currentItem.isArchived &&
+        duplicateInventoryKey(currentItem) === duplicateKey
+      );
+    }) ?? null
+  );
+}
+
 export async function hydrateBarInventoryItems(): Promise<void> {
   barInventoryItems = await listItems();
   isHydrated = true;
@@ -76,13 +108,15 @@ export function useBarInventoryItems(): Array<InventoryItem> {
 }
 
 export function saveBarInventoryItem(item: InventoryItem): void {
+  const duplicateItem = findActiveDuplicateItem(item);
+  const targetItem = duplicateItem ? { ...item, id: duplicateItem.id } : item;
   const currentItem = barInventoryItems.find((inventoryItem: InventoryItem): boolean => {
-    return inventoryItem.id === item.id;
+    return inventoryItem.id === targetItem.id;
   });
   const normalizedItem = normalizeInventoryItem({
     ...currentItem,
-    ...item,
-    createdAt: currentItem?.createdAt ?? item.createdAt,
+    ...targetItem,
+    createdAt: currentItem?.createdAt ?? targetItem.createdAt,
     updatedAt: new Date().toISOString(),
   });
 
